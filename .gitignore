@@ -73,6 +73,7 @@ key.properties
 /android/app/debug/
 /android/app/profile/
 /android/app/release/
+/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 
 # iOS and Xcode generated files
 **/ios/.symlinks/
@@ -80,6 +81,8 @@ key.properties
 **/ios/Flutter/Generated.xcconfig
 **/ios/Flutter/flutter_export_environment.sh
 **/ios/Pods/
+/ios/Runner/GeneratedPluginRegistrant.h
+/ios/Runner/GeneratedPluginRegistrant.m
 **/DerivedData/
 **/xcuserdata/
 *.mode1v3
