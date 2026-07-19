@@ -112,5 +112,16 @@ may still change while the project is in active development.
 
 ## License
 
-No open-source license has been declared for this repository. All rights are
-reserved unless the project owner grants explicit permission.
+FitQuest RPG is licensed under the
+[PolyForm Noncommercial License 1.0.0](LICENSE).
+
+You may use, study, modify, and share this project for personal and other
+noncommercial purposes. Commercial use—including selling the software,
+monetizing a derivative, or using it for an anticipated commercial
+application—is not permitted without separate written permission from the
+copyright holder.
+
+This is a source-available license with noncommercial restrictions, not an
+OSI-approved open-source license. Redistributed copies must retain the license
+and the required copyright notice. Third-party packages and assets remain
+governed by their respective licenses.
