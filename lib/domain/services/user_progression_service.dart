@@ -2,6 +2,7 @@ import '../../core/enums/stat_type.dart';
 import '../../core/utils/level_requirements.dart';
 import '../../data/models/user_model.dart';
 import 'hp_calculator.dart';
+import 'stat_growth_service.dart';
 
 /// Pure progression calculations shared by user-state commands.
 class UserProgressionService {
@@ -15,17 +16,24 @@ class UserProgressionService {
     final newTotalXp = current.totalXp + amount;
     final newLevel = LevelRequirements.calculateLevel(newTotalXp);
     final xpInLevel = newTotalXp - LevelRequirements.totalXpForLevel(newLevel);
+    final newStats = _applyLevelGrowth(
+      current.stats,
+      fromLevel: current.level,
+      toLevel: newLevel,
+    );
 
     var updated = current.copyWith(
       totalXp: newTotalXp,
       currentXp: xpInLevel,
       level: newLevel,
+      stats: newStats,
       updatedAt: now,
     );
 
     if (newLevel > current.level) {
+      final newConstitution = newStats[StatType.constitution.index] ?? 1;
       final newMaxHp = HpCalculator.maxHp(
-        current.getStat(StatType.constitution),
+        newConstitution,
         newLevel,
       );
       updated = updated.copyWith(
@@ -90,10 +98,15 @@ class UserProgressionService {
       newHp = HpCalculator.applyRegen(newHp, current.maxHp, regen);
     }
 
-    final newStats = _applyStatGains(current.stats, statGains);
+    final statsAfterWorkout = _applyStatGains(current.stats, statGains);
     final newTotalXp = current.totalXp + xpGained;
     final newLevel = LevelRequirements.calculateLevel(newTotalXp);
     final xpInLevel = newTotalXp - LevelRequirements.totalXpForLevel(newLevel);
+    final newStats = _applyLevelGrowth(
+      statsAfterWorkout,
+      fromLevel: current.level,
+      toLevel: newLevel,
+    );
     final newConstitution = newStats[StatType.constitution.index] ?? 1;
     final maxHpChanged =
         newLevel != current.level || newConstitution != constitution;
@@ -164,6 +177,24 @@ class UserProgressionService {
     final difference = DateTime(b.year, b.month, b.day)
         .difference(DateTime(a.year, a.month, a.day));
     return difference.inDays == 1;
+  }
+
+  static Map<int, int> _applyLevelGrowth(
+    Map<int, int> currentStats, {
+    required int fromLevel,
+    required int toLevel,
+  }) {
+    if (toLevel <= fromLevel) return currentStats;
+
+    final gains = <StatType, int>{
+      for (final stat in StatType.values)
+        stat: StatGrowthService.wholePointGainBetweenLevels(
+          stat,
+          fromLevel: fromLevel,
+          toLevel: toLevel,
+        ),
+    };
+    return _applyStatGains(currentStats, gains);
   }
 
   static Map<int, int> _applyStatGains(

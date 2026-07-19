@@ -4,6 +4,66 @@ import 'package:fitquest_rpg/domain/services/user_progression_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('UserProgressionService.gainXp', () {
+    test('applies asymptotic level growth evenly to every model stat', () {
+      final now = DateTime(2026, 7, 20, 12);
+      final user = _user(
+        level: 1,
+        currentXp: 90,
+        totalXp: 90,
+        currentHp: 40,
+        maxHp: 155,
+        statValue: 10,
+      );
+
+      final updated = UserProgressionService.gainXp(
+        user,
+        20,
+        now: now,
+      );
+
+      expect(updated.level, 2);
+      for (final stat in StatType.values) {
+        expect(updated.getStat(stat), 12, reason: stat.name);
+      }
+      expect(updated.maxHp, 180);
+      expect(updated.currentHp, 180);
+    });
+
+    test('does not change stats when XP does not increase the level', () {
+      final now = DateTime(2026, 7, 20, 12);
+      final user = _user(statValue: 10);
+
+      final updated = UserProgressionService.gainXp(
+        user,
+        50,
+        now: now,
+      );
+
+      expect(updated.level, 1);
+      for (final stat in StatType.values) {
+        expect(updated.getStat(stat), 10, reason: stat.name);
+      }
+    });
+
+    test('preserves cumulative curve growth when several levels are skipped',
+        () {
+      final now = DateTime(2026, 7, 20, 12);
+      final user = _user(statValue: 10);
+
+      final updated = UserProgressionService.gainXp(
+        user,
+        700,
+        now: now,
+      );
+
+      expect(updated.level, 5);
+      for (final stat in StatType.values) {
+        expect(updated.getStat(stat), 16, reason: stat.name);
+      }
+    });
+  });
+
   group('UserProgressionService.completeWorkout', () {
     test('starts the first streak even when character was created today', () {
       final now = DateTime(2026, 7, 19, 18);
@@ -66,8 +126,11 @@ void main() {
 
       expect(updated.level, 2);
       expect(updated.currentXp, 10);
-      expect(updated.maxHp, 70);
-      expect(updated.currentHp, 70);
+      for (final stat in StatType.values) {
+        expect(updated.getStat(stat), 3, reason: stat.name);
+      }
+      expect(updated.maxHp, 90);
+      expect(updated.currentHp, 90);
     });
 
     test('updates max HP for Constitution without healing to full', () {
@@ -115,10 +178,10 @@ void main() {
       expect(updated.bossBattlesWon, 3);
       expect(updated.totalXp, 100);
       expect(updated.level, 2);
-      expect(updated.getStat(StatType.strength), 3);
-      expect(updated.getStat(StatType.constitution), 3);
-      expect(updated.maxHp, 90);
-      expect(updated.currentHp, 90);
+      expect(updated.getStat(StatType.strength), 5);
+      expect(updated.getStat(StatType.constitution), 5);
+      expect(updated.maxHp, 110);
+      expect(updated.currentHp, 110);
     });
   });
 }
@@ -133,6 +196,7 @@ UserModel _user({
   int longestStreak = 0,
   int streakShields = 0,
   int bossBattlesWon = 0,
+  int statValue = 1,
   DateTime? lastWorkoutAt,
   DateTime? updatedAt,
 }) {
@@ -144,7 +208,7 @@ UserModel _user({
     currentXp: currentXp,
     totalXp: totalXp,
     stats: {
-      for (final stat in StatType.values) stat.index: 1,
+      for (final stat in StatType.values) stat.index: statValue,
     },
     currentHp: currentHp,
     maxHp: maxHp,

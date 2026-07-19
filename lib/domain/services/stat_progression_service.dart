@@ -32,11 +32,6 @@ class StatProgressionService {
     return newStats;
   }
 
-  /// Get stat points earned on level up
-  static int statPointsForLevelUp(int newLevel) {
-    return StatConstants.statPointsForLevelUp(newLevel);
-  }
-
   /// Check if a stat meets or exceeds a threshold
   static bool meetsRequirement(
       Map<StatType, int> stats, StatType stat, int required) {
