@@ -1,108 +1,187 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/data/workout_plan_catalog.dart';
+import '../core/enums/exercise_tracking_metric.dart';
 import '../data/datasources/hive_datasource.dart';
 import '../data/models/daily_quest_model.dart';
+import '../data/models/workout_model.dart';
+import '../data/models/workout_plan_model.dart';
+import '../data/repositories/implementations/workout_plan_repository_impl.dart';
 import 'initialization_provider.dart';
 import 'user_provider.dart';
 
+typedef QuestRewardCallback = Future<void> Function(
+  String questId,
+  int amount,
+);
+
 final questProvider =
     StateNotifierProvider<QuestNotifier, List<DailyQuestModel>>((ref) {
-  final ds = ref.watch(hiveDatasourceProvider);
+  final datasource = ref.watch(hiveDatasourceProvider);
+  final storedPlan =
+      datasource.gameStateBox.get(WorkoutPlanRepositoryImpl.planKey);
+  final now = ref.read(clockProvider).now();
+  final plan = storedPlan is WorkoutPlanModel
+      ? storedPlan
+      : WorkoutPlanCatalog.create(now: now);
   return QuestNotifier(
-    ds,
-    onExpReward: (amount) => ref.read(userProvider.notifier).gainXp(amount),
+    datasource,
+    plan: plan,
+    now: now,
+    onExpReward: (questId, amount) async {
+      await ref.read(userProvider.notifier).awardQuestXp(
+            amount: amount,
+            questId: questId,
+          );
+    },
   );
 });
 
 class QuestNotifier extends StateNotifier<List<DailyQuestModel>> {
-  final HiveDatasource? _ds;
-  final Future<void> Function(int amount) _onExpReward;
+  final HiveDatasource? _datasource;
+  final QuestRewardCallback _onExpReward;
+  final DateTime _date;
 
   QuestNotifier(
     HiveDatasource datasource, {
-    required Future<void> Function(int amount) onExpReward,
-  })  : _ds = datasource,
+    required WorkoutPlanModel plan,
+    required DateTime now,
+    required QuestRewardCallback onExpReward,
+  })  : _datasource = datasource,
         _onExpReward = onExpReward,
+        _date = DateTime(now.year, now.month, now.day),
         super([]) {
-    _loadToday();
+    _load(plan);
   }
 
   @visibleForTesting
   QuestNotifier.forTesting({
     required List<DailyQuestModel> initialQuests,
-    required Future<void> Function(int amount) onExpReward,
-  })  : _ds = null,
+    required QuestRewardCallback onExpReward,
+  })  : _datasource = null,
         _onExpReward = onExpReward,
+        _date =
+            initialQuests.isEmpty ? DateTime(2026) : initialQuests.first.date,
         super(initialQuests);
 
-  void _loadToday() {
-    final ds = _ds;
-    if (ds == null) return;
-
-    final today = DateTime.now();
-    final d = DateTime(today.year, today.month, today.day);
-    final raw = ds.gameStateBox.get('quests_$d');
-    if (raw != null) {
-      final list = jsonDecode(raw as String) as List;
-      state = list
-          .map((e) => DailyQuestModel.fromJson(e as Map<String, dynamic>))
+  void _load(WorkoutPlanModel plan) {
+    final datasource = _datasource;
+    if (datasource == null) return;
+    final raw = datasource.gameStateBox.get(_storageKey);
+    if (raw is String) {
+      final decoded = jsonDecode(raw) as List;
+      state = decoded
+          .map(
+            (entry) => DailyQuestModel.fromJson(
+              Map<String, dynamic>.from(entry as Map),
+            ),
+          )
           .toList();
     } else {
-      state = QuestCatalog.today();
+      state = QuestCatalog.forDay(plan: plan, date: _date);
       unawaited(_save());
     }
-    _cleanupStaleKeys();
+    unawaited(_cleanupStaleKeys());
   }
 
-  void _cleanupStaleKeys() {
-    final ds = _ds;
-    if (ds == null) return;
+  Future<void> addProgress(
+    String questId,
+    int amount, {
+    String? eventId,
+  }) async {
+    final index = state.indexWhere((quest) => quest.id == questId);
+    if (index < 0 || state[index].isCompleted || amount <= 0) return;
+    final previousState = state;
+    final previous = state[index];
+    final updated = previous.addProgress(amount, eventId: eventId);
+    if (identical(updated, previous)) return;
 
-    final cutoff = DateTime.now().subtract(const Duration(days: 7));
-    final d = DateTime(cutoff.year, cutoff.month, cutoff.day);
-    final keysToDelete = ds.gameStateBox.keys
-        .where((k) => k is String && k.startsWith('quests_'))
-        .toList();
-    for (final key in keysToDelete) {
-      try {
-        final dateStr = (key as String).replaceFirst('quests_', '');
-        final keyDate = DateTime.parse(dateStr);
-        if (keyDate.isBefore(d)) {
-          ds.gameStateBox.delete(key);
-        }
-      } catch (_) {/* skip malformed keys */}
+    if (!previous.isCompleted && updated.isCompleted) {
+      await _onExpReward(updated.id, updated.expReward);
     }
+
+    state = [...state]..[index] = updated;
+    try {
+      await _save();
+    } catch (_) {
+      state = previousState;
+      rethrow;
+    }
+  }
+
+  Future<void> applyWorkout(WorkoutModel workout) async {
+    final workoutDate = DateTime(
+      workout.date.year,
+      workout.date.month,
+      workout.date.day,
+    );
+    if (workoutDate != _date) return;
+    for (final quest in state) {
+      final amount = _progressForQuest(quest, workout);
+      if (amount <= 0) continue;
+      await addProgress(
+        quest.id,
+        amount,
+        eventId: workout.eventId,
+      );
+    }
+  }
+
+  int _progressForQuest(
+    DailyQuestModel quest,
+    WorkoutModel workout,
+  ) {
+    if (quest.metricSlug == 'workout_count') return 1;
+    final matching = workout.exercises.where(
+      (exercise) => exercise.movementId == quest.metricSlug,
+    );
+    var total = 0.0;
+    for (final exercise in matching) {
+      for (final variation in exercise.variations) {
+        for (final set in variation.sets) {
+          if (!set.isValid(exercise.trackingMetric)) continue;
+          total += switch (exercise.trackingMetric) {
+            ExerciseTrackingMetric.repetitions => set.reps,
+            ExerciseTrackingMetric.durationSeconds => set.durationSeconds,
+            ExerciseTrackingMetric.distanceMeters => set.distanceMeters,
+          };
+        }
+      }
+    }
+    return total.round();
   }
 
   Future<void> _save() async {
-    final ds = _ds;
-    if (ds == null) return;
-
-    try {
-      final today = DateTime.now();
-      final d = DateTime(today.year, today.month, today.day);
-      final json = jsonEncode(state.map((q) => q.toJson()).toList());
-      await ds.gameStateBox.put('quests_$d', json);
-    } catch (e) {
-      debugPrint('[QuestNotifier] Failed to save quests: $e');
-    }
+    final datasource = _datasource;
+    if (datasource == null) return;
+    final encoded = jsonEncode(state.map((quest) => quest.toJson()).toList());
+    await datasource.gameStateBox.put(_storageKey, encoded);
   }
 
-  Future<void> addProgress(String questId, int amount) async {
-    final idx = state.indexWhere((q) => q.id == questId);
-    if (idx >= 0 && !state[idx].isCompleted) {
-      final previous = state[idx];
-      final updated = previous.addProgress(amount);
-      state = [...state]..[idx] = updated;
-      await _save();
-
-      if (!previous.isCompleted && updated.isCompleted) {
-        await _onExpReward(updated.expReward);
+  Future<void> _cleanupStaleKeys() async {
+    final datasource = _datasource;
+    if (datasource == null) return;
+    final cutoff = _date.subtract(const Duration(days: 7));
+    final keys = datasource.gameStateBox.keys
+        .whereType<String>()
+        .where((key) => key.startsWith('quests_v2_'))
+        .toList();
+    for (final key in keys) {
+      final date = DateTime.tryParse(key.replaceFirst('quests_v2_', ''));
+      if (date != null && date.isBefore(cutoff)) {
+        await datasource.gameStateBox.delete(key);
       }
     }
   }
 
-  int get completedCount => state.where((q) => q.isCompleted).length;
+  String get _storageKey =>
+      'quests_v2_${_date.year.toString().padLeft(4, '0')}-'
+      '${_date.month.toString().padLeft(2, '0')}-'
+      '${_date.day.toString().padLeft(2, '0')}';
+
+  int get completedCount => state.where((quest) => quest.isCompleted).length;
 }

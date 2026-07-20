@@ -9,55 +9,25 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_web_plugins:
-    sdk: flutter
 
-  # Liquid glass rendering support
-  liquid_glass_widgets: ^0.13.0
-
-  # State Management
+  # State management
   flutter_riverpod: ^2.6.1
-  riverpod_annotation: ^2.6.1
 
-  # Routing
+  # Routing and local persistence
   go_router: ^14.8.1
-
-  # Local Storage
   hive: ^2.2.3
   hive_flutter: ^1.1.0
 
-  # Gamification Engines
-  quest_gamification: ^0.1.0
-  fifty_achievement_engine: ^0.2.2
-  reward_progress_bar: ^0.0.8
-
-  # Charts
-  fl_chart: ^0.70.2
-
-  # Fonts
-  google_fonts: ^8.1.0
-
   # Utilities
-  uuid: ^4.5.1
-  equatable: ^2.0.7
-  collection: ^1.19.1
-  intl: ^0.19.0
-  freezed_annotation: ^2.4.4
-  json_annotation: ^4.9.0
+  uuid: ^4.6.0
+  intl: ^0.20.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  integration_test:
+    sdk: flutter
   flutter_lints: ^5.0.0
-  build_runner: ^2.4.14
-  riverpod_generator: ^2.6.3
-  freezed: ^2.5.7
-  json_serializable: ^6.9.3
-
-dependency_overrides:
-  meta: ^1.18.0
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/skills/

@@ -1,5 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../../core/enums/stat_type.dart';
+import '../../core/utils/level_requirements.dart';
+import '../../domain/services/hp_calculator.dart';
+import '../../domain/services/stat_growth_service.dart';
 import '../models/user_model.dart';
 import '../models/workout_model.dart';
 import '../models/skill_model.dart';
@@ -13,11 +17,17 @@ class HiveDatasource {
   static const String gameStateBoxName = 'game_state';
 
   /// Current data model version. Increment when UserModel fields change.
-  static const int currentDataVersion = 1;
+  static const int currentDataVersion = 2;
+  static const String migrationNoticeKey = '_migration_notice_v2';
 
   Future<void> initialize() async {
-    // No-op: Hive already initialized in main()
+    await checkAndMigrate();
   }
+
+  bool get boxesAreOpen =>
+      Hive.isBoxOpen(userBoxName) &&
+      Hive.isBoxOpen(workoutsBoxName) &&
+      Hive.isBoxOpen(gameStateBoxName);
 
   /// Get user with validation — guards against corrupt data.
   UserModel? safeGetUser(String key) {
@@ -33,11 +43,20 @@ class HiveDatasource {
   }
 
   UserModel _validateUser(UserModel u) {
+    final totalXp = u.totalXp < 0 ? 0 : u.totalXp;
+    final level = LevelRequirements.calculateLevel(totalXp);
+    final stats = StatGrowthService.indexedStatsAtLevel(level);
+    final maxHp = HpCalculator.maxHp(
+      stats[StatType.vitality.index]!.round(),
+      level,
+    );
     return u.copyWith(
-      level: u.level.clamp(1, 9999),
-      currentXp: u.currentXp.clamp(0, 999999),
-      totalXp: u.totalXp.clamp(0, 999999),
-      currentHp: u.currentHp.clamp(0, u.maxHp),
+      level: level,
+      currentXp: totalXp - LevelRequirements.totalXpForLevel(level),
+      totalXp: totalXp,
+      stats: stats,
+      maxHp: maxHp,
+      currentHp: u.currentHp.clamp(0, maxHp),
       streak: u.streak.clamp(0, 9999),
       streakShields: u.streakShields.clamp(0, 3),
       age: u.age.clamp(10, 120),
@@ -49,17 +68,36 @@ class HiveDatasource {
   /// Check if stored data version matches current.
   /// If not, clear corrupted/incompatible data.
   Future<void> checkAndMigrate() async {
-    final storedVersion = gameStateBox.get('_dataVersion', defaultValue: 0) as int;
+    final storedVersion =
+        gameStateBox.get('_dataVersion', defaultValue: 0) as int;
     if (storedVersion < currentDataVersion) {
-      debugPrint('[Hive] Data version $storedVersion < $currentDataVersion — clearing incompatible data');
+      debugPrint(
+        '[Hive] Data version $storedVersion < $currentDataVersion — '
+        'resetting incompatible progression data',
+      );
       await userBox.clear();
-      gameStateBox.put('_dataVersion', currentDataVersion);
+      await workoutsBox.clear();
+      await skillsBox.clear();
+      await bossesBox.clear();
+      await gameStateBox.clear();
+      await gameStateBox.put('_dataVersion', currentDataVersion);
+      if (storedVersion > 0) {
+        await gameStateBox.put(migrationNoticeKey, true);
+      }
     }
+  }
+
+  Future<bool> consumeMigrationNotice() async {
+    final pending =
+        gameStateBox.get(migrationNoticeKey, defaultValue: false) as bool;
+    if (pending) await gameStateBox.delete(migrationNoticeKey);
+    return pending;
   }
 
   Box<UserModel> get userBox => Hive.box<UserModel>(userBoxName);
   Box<WorkoutModel> get workoutsBox => Hive.box<WorkoutModel>(workoutsBoxName);
   Box<SkillModel> get skillsBox => Hive.box<SkillModel>(skillsBoxName);
-  Box<BossBattleModel> get bossesBox => Hive.box<BossBattleModel>(bossesBoxName);
+  Box<BossBattleModel> get bossesBox =>
+      Hive.box<BossBattleModel>(bossesBoxName);
   Box get gameStateBox => Hive.box(gameStateBoxName);
 }

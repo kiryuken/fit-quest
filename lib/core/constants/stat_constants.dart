@@ -3,10 +3,10 @@ import '../enums/stat_type.dart';
 class StatConstants {
   StatConstants._();
 
-  static const int defaultStatValue = 1;
-  static const int maxStatCap = 100;
+  static const double defaultStatValue = 10;
+  static const double maxStatCap = 50;
 
-  static Map<StatType, int> defaultStats() {
+  static Map<StatType, double> defaultStats() {
     return {for (final s in StatType.values) s: defaultStatValue};
   }
 }

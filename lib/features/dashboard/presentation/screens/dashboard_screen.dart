@@ -34,7 +34,7 @@ class DashboardScreen extends ConsumerWidget {
           );
         }
         final stats = {
-          for (final stat in StatType.values) stat: user.stats[stat.index] ?? 1,
+          for (final stat in StatType.values) stat: user.getStatValue(stat),
         };
         return _DashboardBody(
           level: user.level,
@@ -62,7 +62,7 @@ class _DashboardBody extends StatelessWidget {
   final int currentXp;
   final int streak;
   final int shields;
-  final Map<StatType, int> stats;
+  final Map<StatType, double> stats;
   final String title;
   final String name;
   final List<DailyQuestModel> quests;
@@ -363,7 +363,7 @@ class _DashboardBody extends StatelessWidget {
 
 class _AttributeTile extends StatelessWidget {
   final StatType stat;
-  final int value;
+  final double value;
 
   const _AttributeTile({required this.stat, required this.value});
 
@@ -371,7 +371,7 @@ class _AttributeTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = AppColors.forStat(stat.name);
     return Semantics(
-      label: '${stat.displayName}: $value',
+      label: '${stat.displayName}: ${value.toStringAsFixed(1)}',
       child: PremiumCard(
         padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
@@ -396,7 +396,7 @@ class _AttributeTile extends StatelessWidget {
               ],
             ),
             Text(
-              '$value',
+              value.toStringAsFixed(1),
               style: AppTextStyles.statValue.copyWith(
                 color: color,
                 fontSize: 23,
@@ -484,7 +484,7 @@ class _QuestCard extends StatelessWidget {
 
 class _StatSignal extends StatelessWidget {
   final StatType stat;
-  final int value;
+  final double value;
 
   const _StatSignal({required this.stat, required this.value});
 
@@ -499,7 +499,7 @@ class _StatSignal extends StatelessWidget {
             Text(stat.displayName, style: AppTextStyles.cardMeta),
             const Spacer(),
             Text(
-              '$value',
+              value.toStringAsFixed(1),
               style: AppTextStyles.cardTitle.copyWith(color: color),
             ),
           ],

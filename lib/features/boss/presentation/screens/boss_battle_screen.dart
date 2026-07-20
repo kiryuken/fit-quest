@@ -1,4 +1,3 @@
-import 'package:fitquest_rpg/core/enums/stat_type.dart';
 import 'package:fitquest_rpg/core/routing/route_names.dart';
 import 'package:fitquest_rpg/core/theme/colors.dart';
 import 'package:fitquest_rpg/core/theme/glass_container.dart';
@@ -31,10 +30,23 @@ class _BossBattleScreenState extends ConsumerState<BossBattleScreen> {
     final bossRepository = ref.read(bossRepositoryProvider);
     final boss = await bossRepository.getBoss(widget.id);
     if (boss == null || boss.isDefeated) return;
+    final meetsStats = boss.statThresholds.entries.every(
+      (requirement) => (user.stats[requirement.key] ?? 0) >= requirement.value,
+    );
+    if (user.level < boss.level ||
+        user.totalWorkoutsCompleted < boss.requiredWorkouts ||
+        !meetsStats) {
+      setState(() {
+        _log = 'Requirements not met. Continue your scheduled training.';
+      });
+      return;
+    }
 
     setState(() => _battling = true);
-    final totalStats = user.stats.values.fold(0, (a, b) => a + b);
-    final averageStat = totalStats / user.stats.length;
+    final totalStats =
+        user.stats.values.fold<double>(0, (total, value) => total + value);
+    final averageStat =
+        user.stats.isEmpty ? 10.0 : totalStats / user.stats.length;
     final playerDamage = (averageStat * 2).round().clamp(5, 200);
     final bossDamage = (boss.level * boss.difficulty * 3).clamp(3, 100);
 
@@ -43,28 +55,22 @@ class _BossBattleScreenState extends ConsumerState<BossBattleScreen> {
     final defeated = newDamage >= boss.hp;
 
     if (defeated) {
+      final progression =
+          await ref.read(userProvider.notifier).completeBossVictory(
+                bossId: boss.id,
+                xpReward: boss.xpReward,
+              );
       await bossRepository.saveBoss(
         boss.copyWith(
           currentDamageDone: boss.hp,
           isDefeated: true,
         ),
       );
-      await ref.read(userProvider.notifier).completeBossVictory(
-            xpReward: boss.xpReward,
-            statRewards: boss.statRewards.map(
-              (index, value) => MapEntry(
-                index < StatType.values.length
-                    ? StatType.values[index]
-                    : StatType.strength,
-                value,
-              ),
-            ),
-          );
 
       if (!mounted) return;
       setState(() {
         _log = 'Critical hit · $playerDamage damage\n'
-            '${boss.name} defeated · +${boss.xpReward} XP';
+            '${boss.name} defeated · +${progression.xpAwarded} XP';
         _battling = false;
       });
       await Future.delayed(const Duration(seconds: 1));

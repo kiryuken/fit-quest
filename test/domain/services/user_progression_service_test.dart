@@ -1,223 +1,285 @@
 import 'package:fitquest_rpg/core/enums/stat_type.dart';
+import 'package:fitquest_rpg/core/utils/level_requirements.dart';
 import 'package:fitquest_rpg/data/models/user_model.dart';
+import 'package:fitquest_rpg/domain/services/hp_calculator.dart';
+import 'package:fitquest_rpg/domain/services/stat_growth_service.dart';
 import 'package:fitquest_rpg/domain/services/user_progression_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('UserProgressionService.gainXp', () {
-    test('applies asymptotic level growth evenly to every model stat', () {
+  group('UserProgressionService XP and level growth', () {
+    test('level-up derives all five exact stats and fully heals', () {
       final now = DateTime(2026, 7, 20, 12);
-      final user = _user(
-        level: 1,
-        currentXp: 90,
-        totalXp: 90,
-        currentHp: 40,
-        maxHp: 155,
-        statValue: 10,
-      );
+      final user = _user(totalXp: 90, currentHp: 40);
 
-      final updated = UserProgressionService.gainXp(
-        user,
-        20,
-        now: now,
-      );
+      final updated = UserProgressionService.gainXp(user, 20, now: now);
 
       expect(updated.level, 2);
+      expect(updated.currentXp, 10);
       for (final stat in StatType.values) {
-        expect(updated.getStat(stat), 12, reason: stat.name);
+        expect(
+          updated.getStatValue(stat),
+          closeTo(StatGrowthService.baseStatAtLevel(stat, 2), 1e-10),
+          reason: stat.name,
+        );
       }
       expect(updated.maxHp, 180);
       expect(updated.currentHp, 180);
     });
 
-    test('does not change stats when XP does not increase the level', () {
+    test('XP without a level-up cannot inflate a base stat', () {
       final now = DateTime(2026, 7, 20, 12);
-      final user = _user(statValue: 10);
+      final user = _user();
 
-      final updated = UserProgressionService.gainXp(
-        user,
-        50,
-        now: now,
-      );
+      final updated = UserProgressionService.gainXp(user, 50, now: now);
 
       expect(updated.level, 1);
-      for (final stat in StatType.values) {
-        expect(updated.getStat(stat), 10, reason: stat.name);
-      }
+      expect(updated.stats, StatGrowthService.indexedStatsAtLevel(1));
     });
 
-    test('preserves cumulative curve growth when several levels are skipped',
-        () {
+    test('multi-level grants land directly on the same curve', () {
       final now = DateTime(2026, 7, 20, 12);
-      final user = _user(statValue: 10);
+      final updated = UserProgressionService.gainXp(_user(), 3120, now: now);
 
-      final updated = UserProgressionService.gainXp(
-        user,
-        700,
-        now: now,
-      );
-
-      expect(updated.level, 5);
+      expect(updated.level, 6);
+      expect(updated.currentXp, 642);
       for (final stat in StatType.values) {
-        expect(updated.getStat(stat), 16, reason: stat.name);
+        expect(
+          updated.getStatValue(stat),
+          closeTo(StatGrowthService.baseStatAtLevel(stat, 6), 1e-10),
+        );
       }
     });
   });
 
-  group('UserProgressionService.completeWorkout', () {
-    test('starts the first streak even when character was created today', () {
-      final now = DateTime(2026, 7, 19, 18);
+  group('UserProgressionService scheduled workout progression', () {
+    test('first valid same-day workout starts the streak at one', () {
+      final now = DateTime(2026, 7, 20, 18);
       final user = _user(
-        lastWorkoutAt: DateTime(2026, 7, 19, 9),
-        updatedAt: DateTime(2026, 7, 19, 9),
+        createdAt: DateTime(2026, 7, 20, 8),
+        lastWorkoutAt: DateTime(2026, 7, 20, 9),
       );
 
-      final updated = UserProgressionService.completeWorkout(
+      final result = UserProgressionService.completeWorkout(
         user,
-        xpGained: 20,
-        statGains: const {StatType.strength: 2},
+        eventId: 'workout:first',
+        requestedXp: 23,
+        masteryPoints: const {'push_up': 15},
+        personalRecordMovementIds: const [],
         now: now,
+        countsForStreak: true,
       );
 
-      expect(updated.streak, 1);
-      expect(updated.longestStreak, 1);
+      expect(result.user.streak, 1);
+      expect(result.user.longestStreak, 1);
+      expect(result.user.totalWorkoutsCompleted, 1);
+      expect(result.user.masteryXp['push_up'], 15);
     });
 
-    test('earns a shield when the new consecutive streak reaches seven', () {
-      final now = DateTime(2026, 7, 19, 18);
+    test('every seventh scheduled completion earns one shield', () {
+      final now = DateTime(2026, 7, 20, 18);
       final user = _user(
         streak: 6,
         longestStreak: 6,
-        lastWorkoutAt: DateTime(2026, 7, 18, 9),
-        updatedAt: DateTime(2026, 7, 18, 9),
+        scheduledCompletions: 6,
+        lastStreakWorkoutAt: DateTime(2026, 7, 19, 18),
       );
 
-      final updated = UserProgressionService.completeWorkout(
-        user,
-        xpGained: 20,
-        statGains: const {},
-        now: now,
-      );
+      final result = _complete(user, now, eventId: 'workout:seven');
 
-      expect(updated.streak, 7);
-      expect(updated.longestStreak, 7);
-      expect(updated.streakShields, 1);
+      expect(result.user.streak, 7);
+      expect(result.user.longestStreak, 7);
+      expect(result.user.streakShields, 1);
+      expect(result.user.scheduledCompletions, 7);
     });
 
-    test('recomputes max HP and fully heals on a workout level-up', () {
-      final now = DateTime(2026, 7, 19, 18);
+    test('a shield covers one missed scheduled day', () {
       final user = _user(
-        level: 1,
-        currentXp: 90,
-        totalXp: 90,
-        currentHp: 20,
-        maxHp: 65,
-        streak: 1,
-        lastWorkoutAt: DateTime(2026, 7, 19, 9),
-        updatedAt: DateTime(2026, 7, 19, 9),
+        streak: 8,
+        streakShields: 1,
+        scheduledCompletions: 8,
+        lastStreakWorkoutAt: DateTime(2026, 7, 17),
       );
 
-      final updated = UserProgressionService.completeWorkout(
+      final result = _complete(
         user,
-        xpGained: 20,
-        statGains: const {},
-        now: now,
+        DateTime(2026, 7, 20),
+        eventId: 'workout:shield',
+        missedScheduledDays: 1,
       );
 
-      expect(updated.level, 2);
-      expect(updated.currentXp, 10);
-      for (final stat in StatType.values) {
-        expect(updated.getStat(stat), 3, reason: stat.name);
-      }
-      expect(updated.maxHp, 90);
-      expect(updated.currentHp, 90);
+      expect(result.user.streak, 9);
+      expect(result.user.streakShields, 0);
     });
 
-    test('updates max HP for Constitution without healing to full', () {
-      final now = DateTime(2026, 7, 19, 18);
+    test('more missed days than shields resets the streak', () {
       final user = _user(
-        currentHp: 50,
-        maxHp: 65,
-        streak: 1,
-        lastWorkoutAt: DateTime(2026, 7, 19, 9),
-        updatedAt: DateTime(2026, 7, 19, 9),
+        streak: 8,
+        streakShields: 1,
+        scheduledCompletions: 8,
+        lastStreakWorkoutAt: DateTime(2026, 7, 15),
       );
 
-      final updated = UserProgressionService.completeWorkout(
+      final result = _complete(
         user,
-        xpGained: 20,
-        statGains: const {StatType.constitution: 1},
-        now: now,
+        DateTime(2026, 7, 20),
+        eventId: 'workout:reset',
+        missedScheduledDays: 2,
       );
 
-      expect(updated.maxHp, 75);
-      expect(updated.currentHp, 45);
+      expect(result.user.streak, 1);
+      expect(result.user.streakShields, 0);
+    });
+
+    test('optional training grants progress but does not advance streak', () {
+      final user = _user(streak: 4, scheduledCompletions: 4);
+      final result = UserProgressionService.completeWorkout(
+        user,
+        eventId: 'workout:optional',
+        requestedXp: 20,
+        masteryPoints: const {'running': 8},
+        personalRecordMovementIds: const [],
+        now: DateTime(2026, 7, 20),
+        countsForStreak: false,
+      );
+
+      expect(result.user.streak, 4);
+      expect(result.user.scheduledCompletions, 4);
+      expect(result.user.totalWorkoutsCompleted, 1);
+    });
+
+    test('replaying one workout event never duplicates mutations', () {
+      final now = DateTime(2026, 7, 20);
+      final first = _complete(_user(), now, eventId: 'workout:same');
+      final replay = _complete(first.user, now, eventId: 'workout:same');
+
+      expect(replay.duplicate, isTrue);
+      expect(replay.user.totalXp, first.user.totalXp);
+      expect(replay.user.totalWorkoutsCompleted, 1);
+      expect(replay.user.masteryXp, first.user.masteryXp);
+    });
+
+    test('workout level-up raises max HP and heals before exertion', () {
+      final now = DateTime(2026, 7, 20, 18);
+      final user = _user(totalXp: 90, currentHp: 20);
+      final result = _complete(
+        user,
+        now,
+        eventId: 'workout:level-up',
+        requestedXp: 20,
+      );
+
+      expect(result.user.level, 2);
+      expect(result.user.maxHp, 180);
+      expect(result.user.currentHp, 180);
     });
   });
 
-  group('UserProgressionService.completeBossVictory', () {
-    test('applies rewards and increments the boss win counter once', () {
-      final now = DateTime(2026, 7, 19, 18);
-      final user = _user(
-        bossBattlesWon: 2,
-        currentHp: 10,
-        maxHp: 65,
-        updatedAt: DateTime(2026, 7, 19, 9),
+  group('UserProgressionService budgets and boss victories', () {
+    test('workout and quest budgets cap character XP at 30 per day', () {
+      final now = DateTime(2026, 7, 20);
+      final workout = UserProgressionService.awardXp(
+        _user(),
+        999,
+        source: XpAwardSource.workout,
+        now: now,
+        eventId: 'workout:budget',
+      );
+      final quest = UserProgressionService.awardXp(
+        workout.user,
+        999,
+        source: XpAwardSource.quest,
+        now: now,
+        eventId: 'quest:budget',
       );
 
-      final updated = UserProgressionService.completeBossVictory(
-        user,
-        xpReward: 100,
-        statRewards: const {
-          StatType.strength: 2,
-          StatType.constitution: 2,
-        },
+      expect(workout.xpAwarded, 25);
+      expect(quest.xpAwarded, 5);
+      expect(quest.user.totalXp, 30);
+    });
+
+    test('boss reward is capped, counted once, and gives no raw stat points',
+        () {
+      final now = DateTime(2026, 7, 20);
+      final initial = _user(bossBattlesWon: 2);
+      final first = UserProgressionService.completeBossVictory(
+        initial,
+        bossId: 'training_dummy',
+        requestedXp: 100,
+        now: now,
+      );
+      final replay = UserProgressionService.completeBossVictory(
+        first.user,
+        bossId: 'training_dummy',
+        requestedXp: 100,
         now: now,
       );
 
-      expect(updated.bossBattlesWon, 3);
-      expect(updated.totalXp, 100);
-      expect(updated.level, 2);
-      expect(updated.getStat(StatType.strength), 5);
-      expect(updated.getStat(StatType.constitution), 5);
-      expect(updated.maxHp, 110);
-      expect(updated.currentHp, 110);
+      expect(first.xpAwarded, 25);
+      expect(first.user.bossBattlesWon, 3);
+      expect(first.user.stats, StatGrowthService.indexedStatsAtLevel(1));
+      expect(replay.duplicate, isTrue);
+      expect(replay.user.bossBattlesWon, 3);
     });
   });
 }
 
+ProgressionResult _complete(
+  UserModel user,
+  DateTime now, {
+  required String eventId,
+  int requestedXp = 20,
+  int missedScheduledDays = 0,
+}) {
+  return UserProgressionService.completeWorkout(
+    user,
+    eventId: eventId,
+    requestedXp: requestedXp,
+    masteryPoints: const {'push_up': 10},
+    personalRecordMovementIds: const [],
+    now: now,
+    countsForStreak: true,
+    missedScheduledDays: missedScheduledDays,
+  );
+}
+
 UserModel _user({
-  int level = 1,
-  int currentXp = 0,
   int totalXp = 0,
-  int currentHp = 65,
-  int maxHp = 65,
+  int currentHp = 155,
   int streak = 0,
   int longestStreak = 0,
   int streakShields = 0,
+  int scheduledCompletions = 0,
   int bossBattlesWon = 0,
-  int statValue = 1,
+  DateTime? createdAt,
   DateTime? lastWorkoutAt,
-  DateTime? updatedAt,
+  DateTime? lastStreakWorkoutAt,
 }) {
-  final createdAt = DateTime(2026, 7, 19, 8);
+  final created = createdAt ?? DateTime(2026, 7, 19, 8);
+  final level = LevelRequirements.calculateLevel(totalXp);
+  final stats = StatGrowthService.indexedStatsAtLevel(level);
+  final maxHp = HpCalculator.maxHp(
+    stats[StatType.vitality.index]!.round(),
+    level,
+  );
   return UserModel(
     id: 'user-1',
     name: 'Tester',
     level: level,
-    currentXp: currentXp,
+    currentXp: totalXp - LevelRequirements.totalXpForLevel(level),
     totalXp: totalXp,
-    stats: {
-      for (final stat in StatType.values) stat.index: statValue,
-    },
-    currentHp: currentHp,
+    stats: stats,
+    currentHp: currentHp.clamp(0, maxHp),
     maxHp: maxHp,
     streak: streak,
     longestStreak: longestStreak,
     streakShields: streakShields,
+    scheduledCompletions: scheduledCompletions,
     bossBattlesWon: bossBattlesWon,
-    lastWorkoutAt: lastWorkoutAt ?? createdAt,
-    createdAt: createdAt,
-    updatedAt: updatedAt ?? createdAt,
+    lastWorkoutAt: lastWorkoutAt,
+    lastStreakWorkoutAt: lastStreakWorkoutAt,
+    xpBudgetDate: created,
+    createdAt: created,
+    updatedAt: created,
   );
 }

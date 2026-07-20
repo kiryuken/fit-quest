@@ -13,4 +13,10 @@ class HiveTypeIds {
   static const int dailyQuestModel = 7;
   static const int gameStateModel = 8;
   static const int achievementStateModel = 9;
+  static const int workoutPlanModel = 10;
+  static const int plannedDayModel = 11;
+  static const int plannedExerciseModel = 12;
+  static const int variationPlanModel = 13;
+  static const int variationRecord = 14;
+  static const int workoutSetRecord = 15;
 }

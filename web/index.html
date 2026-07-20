@@ -18,29 +18,76 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="FitQuest RPG turns structured workouts into offline character progression.">
+  <meta name="theme-color" content="#05010F">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="fitquest_rpg">
+  <meta name="apple-mobile-web-app-title" content="FitQuest">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>fitquest_rpg</title>
+  <title>FitQuest RPG</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 15% 10%, rgba(99, 102, 241, .25), transparent 35%),
+        radial-gradient(circle at 85% 85%, rgba(236, 72, 153, .18), transparent 35%),
+        #05010f;
+      color: #fff;
+      font-family: system-ui, sans-serif;
+    }
+    #boot {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      display: grid;
+      place-content: center;
+      gap: 14px;
+      text-align: center;
+      letter-spacing: .18em;
+      pointer-events: none;
+    }
+    #boot-mark {
+      width: 64px;
+      height: 64px;
+      margin: auto;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, .25);
+      background: linear-gradient(135deg, #6366f1, #2dd4bf);
+      box-shadow: 0 18px 60px rgba(99, 102, 241, .42);
+      animation: pulse 1.4s ease-in-out infinite alternate;
+    }
+    #boot span {
+      color: rgba(255, 255, 255, .65);
+      font-size: 11px;
+    }
+    @keyframes pulse {
+      to { transform: scale(1.06); filter: brightness(1.15); }
+    }
+  </style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
-
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+  <div id="boot" aria-live="polite">
+    <div id="boot-mark" aria-hidden="true"></div>
+    <strong>FITQUEST</strong>
+    <span>INITIALIZING LOCAL QUEST</span>
+  </div>
+  <script>
+    const removeBootOverlay = () => document.getElementById('boot')?.remove();
+    window.addEventListener('flutter-first-frame', function () {
+      removeBootOverlay();
+    });
+    window.setTimeout(removeBootOverlay, 4000);
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

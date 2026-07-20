@@ -9,7 +9,7 @@ void main() {
       expect(HpCalculator.exertionCost(99, 1), 5);
     });
 
-    test('applies constitution reduction within the valid range', () {
+    test('applies vitality reduction within the valid range', () {
       expect(HpCalculator.exertionCost(200, 1), 8);
       expect(HpCalculator.exertionCost(200, 3), 5);
     });

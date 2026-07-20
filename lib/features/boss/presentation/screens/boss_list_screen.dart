@@ -3,7 +3,9 @@ import 'package:fitquest_rpg/core/theme/colors.dart';
 import 'package:fitquest_rpg/core/theme/glass_container.dart';
 import 'package:fitquest_rpg/core/theme/spacing.dart';
 import 'package:fitquest_rpg/core/theme/text_styles.dart';
+import 'package:fitquest_rpg/core/utils/level_requirements.dart';
 import 'package:fitquest_rpg/data/models/boss_battle_model.dart';
+import 'package:fitquest_rpg/data/models/user_model.dart';
 import 'package:fitquest_rpg/data/repositories/interfaces/boss_repository.dart';
 import 'package:fitquest_rpg/providers/initialization_provider.dart';
 import 'package:fitquest_rpg/providers/user_provider.dart';
@@ -18,7 +20,6 @@ class BossListScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(userProvider).valueOrNull;
     final userLevel = user?.level ?? 1;
-    final totalWorkouts = user?.totalWorkoutsCompleted ?? 0;
     final bossRepo = ref.watch(bossRepositoryProvider);
 
     return AuroraScaffold(
@@ -40,9 +41,7 @@ class BossListScreen extends ConsumerWidget {
 
           final defeated = bosses.where((boss) => boss.isDefeated).length;
           final available = bosses.where((boss) {
-            return totalWorkouts >= boss.requiredWorkouts &&
-                userLevel >= boss.level &&
-                !boss.isDefeated;
+            return _isEligible(user, boss) && !boss.isDefeated;
           }).length;
 
           return ListView(
@@ -98,8 +97,14 @@ class BossListScreen extends ConsumerWidget {
                   padding: const EdgeInsets.only(bottom: AppSpacing.md),
                   child: _BossCard(
                     boss: boss,
-                    unlocked: totalWorkouts >= boss.requiredWorkouts &&
-                        userLevel >= boss.level,
+                    unlocked: _isEligible(user, boss),
+                    rewardXp: boss.isDefeated
+                        ? user?.processedEventXp['boss:${boss.id}'] ?? 0
+                        : boss.xpReward.clamp(
+                            0,
+                            (LevelRequirements.xpToNextLevel(userLevel) * 0.25)
+                                .round(),
+                          ),
                   ),
                 ),
             ],
@@ -119,13 +124,29 @@ class BossListScreen extends ConsumerWidget {
     }
     return bosses;
   }
+
+  bool _isEligible(UserModel? user, BossBattleModel boss) {
+    if (user == null ||
+        user.level < boss.level ||
+        user.totalWorkoutsCompleted < boss.requiredWorkouts) {
+      return false;
+    }
+    return boss.statThresholds.entries.every(
+      (requirement) => (user.stats[requirement.key] ?? 0) >= requirement.value,
+    );
+  }
 }
 
 class _BossCard extends StatelessWidget {
   final BossBattleModel boss;
   final bool unlocked;
+  final int rewardXp;
 
-  const _BossCard({required this.boss, required this.unlocked});
+  const _BossCard({
+    required this.boss,
+    required this.unlocked,
+    required this.rewardXp,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -202,7 +223,7 @@ class _BossCard extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
-                Text('+${boss.xpReward} XP', style: AppTextStyles.xpGain),
+                Text('+$rewardXp XP', style: AppTextStyles.xpGain),
               ],
             )
           else if (!unlocked)
@@ -251,7 +272,7 @@ class _BossCard extends StatelessWidget {
                   color: tierColor,
                 ),
                 const Spacer(),
-                Text('+${boss.xpReward} XP', style: AppTextStyles.xpGain),
+                Text('UP TO +$rewardXp XP', style: AppTextStyles.xpGain),
                 const SizedBox(width: AppSpacing.sm),
                 const Icon(
                   Icons.arrow_forward_rounded,

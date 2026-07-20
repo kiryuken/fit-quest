@@ -27,7 +27,7 @@ class SkillDetailScreen extends ConsumerWidget {
     final currentLevel = user?.skillLevel(skill.id) ?? 0;
     final stats = {
       if (user != null)
-        for (final stat in StatType.values) stat: user.stats[stat.index] ?? 1,
+        for (final stat in StatType.values) stat: user.getStatValue(stat),
     };
     final color = _colorForArt(skill.martialArtIndex);
 
@@ -164,7 +164,7 @@ class SkillDetailScreen extends ConsumerWidget {
   List<Widget> _prerequisiteRows({
     required SkillModel skill,
     required UserModel? user,
-    required Map<StatType, int> stats,
+    required Map<StatType, double> stats,
     required bool unlocked,
   }) {
     final rows = <Widget>[];

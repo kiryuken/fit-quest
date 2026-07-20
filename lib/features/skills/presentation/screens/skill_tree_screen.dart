@@ -121,7 +121,7 @@ class _MartialArtSection extends StatelessWidget {
   final List<SkillModel> skills;
   final List<String> unlockedIds;
   final Map<String, int> skillLevels;
-  final Map<int, int> userStats;
+  final Map<int, double> userStats;
 
   const _MartialArtSection({
     required this.art,
@@ -206,7 +206,7 @@ class _SkillCard extends ConsumerWidget {
   final Color accentColor;
   final bool unlocked;
   final int level;
-  final Map<int, int> userStats;
+  final Map<int, double> userStats;
 
   const _SkillCard({
     required this.skill,

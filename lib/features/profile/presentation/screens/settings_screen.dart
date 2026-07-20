@@ -65,7 +65,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
 
     if (confirmed != true || !mounted) return;
-    await ref.read(gameResetServiceProvider).resetAllData();
+    try {
+      await ref.read(gameResetServiceProvider).resetAllData();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Local data could not be reset: $error')),
+      );
+      return;
+    }
 
     if (!mounted) return;
     // Root messenger survives navigation, so the confirmation stays visible.

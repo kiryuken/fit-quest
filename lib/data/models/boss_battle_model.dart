@@ -31,7 +31,10 @@ class BossBattleModel extends HiveObject {
   final int xpReward;
 
   @HiveField(8)
-  final Map<int, int> statRewards; // StatType index -> bonus XP
+
+  /// Legacy storage field. Kept empty in schema v2; boss victories do not
+  /// grant raw stat points.
+  final Map<int, int> statRewards;
 
   @HiveField(9)
   final String? skillRewardId;

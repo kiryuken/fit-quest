@@ -70,26 +70,6 @@ void main() {
       );
     });
 
-    test('quantizes cumulative growth without losing fractional gains', () {
-      const stat = StatType.strength;
-      final direct = StatGrowthService.wholePointGainBetweenLevels(
-        stat,
-        fromLevel: 1,
-        toLevel: 100,
-      );
-      var incremental = 0;
-      for (var level = 1; level < 100; level++) {
-        incremental += StatGrowthService.wholePointGainBetweenLevels(
-          stat,
-          fromLevel: level,
-          toLevel: level + 1,
-        );
-      }
-
-      expect(direct, 39);
-      expect(incremental, direct);
-    });
-
     test('rejects invalid or descending level ranges', () {
       expect(
         () => StatGrowthService.baseStatAtLevel(StatType.strength, 0),
@@ -97,14 +77,6 @@ void main() {
       );
       expect(
         () => StatGrowthService.gainBetweenLevels(
-          StatType.strength,
-          fromLevel: 5,
-          toLevel: 4,
-        ),
-        throwsArgumentError,
-      );
-      expect(
-        () => StatGrowthService.wholePointGainBetweenLevels(
           StatType.strength,
           fromLevel: 5,
           toLevel: 4,

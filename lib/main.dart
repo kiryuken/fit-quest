@@ -3,17 +3,21 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'app.dart';
+import 'core/theme/colors.dart';
 import 'data/models/user_model.dart';
 import 'data/models/workout_model.dart';
 import 'data/models/skill_model.dart';
 import 'data/models/boss_battle_model.dart';
+import 'data/models/workout_plan_model.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: AppColors.background,
+      systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
 
@@ -22,6 +26,12 @@ void main() async {
   Hive.registerAdapter(UserModelAdapter());
   Hive.registerAdapter(WorkoutModelAdapter());
   Hive.registerAdapter(ExerciseRecordAdapter());
+  Hive.registerAdapter(VariationRecordAdapter());
+  Hive.registerAdapter(WorkoutSetRecordAdapter());
+  Hive.registerAdapter(WorkoutPlanModelAdapter());
+  Hive.registerAdapter(PlannedDayModelAdapter());
+  Hive.registerAdapter(PlannedExerciseModelAdapter());
+  Hive.registerAdapter(VariationPlanModelAdapter());
   Hive.registerAdapter(SkillModelAdapter());
   Hive.registerAdapter(SkillLevelDataAdapter());
   Hive.registerAdapter(ExerciseRequirementAdapter());

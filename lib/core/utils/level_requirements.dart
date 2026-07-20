@@ -1,40 +1,43 @@
-/// Hunter System level thresholds.
+import 'dart:math' as math;
+
+/// Character-level XP curve.
+///
+/// The cost of advancing from level L is `round(100 × L^1.4)`. Cumulative
+/// thresholds are derived from that formula so there is no level cap or
+/// duplicated lookup table.
 class LevelRequirements {
   LevelRequirements._();
 
-  static const Map<int, int> _thresholds = {
-    1: 0,
-    2: 100,
-    3: 250,
-    4: 450,
-    5: 700,
-    6: 1000,
-    7: 1400,
-    8: 1900,
-    9: 2500,
-    10: 3200,
-  };
-
   /// XP required within [level] before advancing to the next level.
   static int xpToNextLevel(int level) {
-    final currentThreshold = _thresholds[level] ?? 0;
-    final nextThreshold = _thresholds[level + 1];
-    return nextThreshold == null
-        ? level * 500
-        : nextThreshold - currentThreshold;
+    _validateLevel(level);
+    return (100 * math.pow(level, 1.4)).round();
   }
 
-  static int totalXpForLevel(int level) => _thresholds[level] ?? 0;
+  /// Total lifetime XP required to enter [level].
+  static int totalXpForLevel(int level) {
+    _validateLevel(level);
+    var total = 0;
+    for (var current = 1; current < level; current++) {
+      total += xpToNextLevel(current);
+    }
+    return total;
+  }
 
   static bool canLevelUp(int currentLevel, int totalXp) =>
       totalXp >= totalXpForLevel(currentLevel) + xpToNextLevel(currentLevel);
 
   static int calculateLevel(int totalXp) {
-    int lvl = 1;
-    for (final e in _thresholds.entries) {
-      if (totalXp >= e.value) lvl = e.key;
+    if (totalXp < 0) {
+      throw RangeError.value(totalXp, 'totalXp', 'must not be negative');
     }
-    return lvl;
+    var level = 1;
+    var remaining = totalXp;
+    while (remaining >= xpToNextLevel(level)) {
+      remaining -= xpToNextLevel(level);
+      level++;
+    }
+    return level;
   }
 
   static double progressToNext(int currentLevel, int currentXp) {
@@ -46,4 +49,10 @@ class LevelRequirements {
   // Alias for existing provider compatibility
   static double levelProgress(int level, int currentXp) =>
       progressToNext(level, currentXp);
+
+  static void _validateLevel(int level) {
+    if (level < 1) {
+      throw RangeError.value(level, 'level', 'must be at least 1');
+    }
+  }
 }

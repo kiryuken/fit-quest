@@ -45,9 +45,9 @@ void main() {
 
   test('reset clears storage and rebuilds quest and achievement state',
       () async {
-    final quests = QuestCatalog.today();
+    final quests = QuestCatalog.today(now: DateTime(2026, 7, 20));
     quests[0] = quests[0].addProgress(1);
-    final achievements = AchievementCatalog.defaults();
+    final achievements = AchievementCatalog.defaults().toList();
     achievements[0] = achievements[0].copyUnlocked();
     var questBuilds = 0;
     var achievementBuilds = 0;
@@ -56,11 +56,12 @@ void main() {
       overrides: [
         hiveDatasourceProvider.overrideWithValue(HiveDatasource()),
         questProvider.overrideWith((ref) {
-          final initialQuests =
-              questBuilds++ == 0 ? quests : QuestCatalog.today();
+          final initialQuests = questBuilds++ == 0
+              ? quests
+              : QuestCatalog.today(now: DateTime(2026, 7, 20));
           return QuestNotifier.forTesting(
             initialQuests: initialQuests,
-            onExpReward: (_) async {},
+            onExpReward: (_, __) async {},
           );
         }),
         achievementProvider.overrideWith((ref) {
@@ -83,7 +84,10 @@ void main() {
 
     await container.read(gameResetServiceProvider).resetAllData();
 
-    expect(Hive.box(HiveDatasource.gameStateBoxName).isEmpty, isTrue);
+    expect(
+      Hive.box(HiveDatasource.gameStateBoxName).get('_dataVersion'),
+      HiveDatasource.currentDataVersion,
+    );
 
     final newQuestNotifier = container.read(questProvider.notifier);
     final newAchievementNotifier = container.read(achievementProvider.notifier);
@@ -104,6 +108,38 @@ void main() {
     );
     expect(questBuilds, 2);
     expect(achievementBuilds, 2);
+  });
+
+  test('schema v2 migration resets incompatible progression exactly once',
+      () async {
+    final now = DateTime(2026, 7, 20);
+    await Hive.box<UserModel>(HiveDatasource.userBoxName).put(
+      'current_user',
+      UserModel(
+        id: 'legacy',
+        name: 'Legacy',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    await Hive.box(HiveDatasource.gameStateBoxName).put('_dataVersion', 1);
+    final datasource = HiveDatasource();
+
+    await datasource.checkAndMigrate();
+
+    expect(datasource.userBox.isEmpty, isTrue);
+    expect(
+      datasource.gameStateBox.get('_dataVersion'),
+      HiveDatasource.currentDataVersion,
+    );
+    expect(await datasource.consumeMigrationNotice(), isTrue);
+    expect(await datasource.consumeMigrationNotice(), isFalse);
+
+    await datasource.checkAndMigrate();
+    expect(
+      datasource.gameStateBox.get('_dataVersion'),
+      HiveDatasource.currentDataVersion,
+    );
   });
 }
 

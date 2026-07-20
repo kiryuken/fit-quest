@@ -1,4 +1,5 @@
 import 'package:fitquest_rpg/app.dart';
+import 'package:fitquest_rpg/core/enums/stat_type.dart';
 import 'package:fitquest_rpg/core/routing/app_router.dart';
 import 'package:fitquest_rpg/data/models/user_model.dart';
 import 'package:fitquest_rpg/features/onboarding/presentation/screens/character_creation_screen.dart';
@@ -51,7 +52,7 @@ void main() {
           questProvider.overrideWith(
             (ref) => QuestNotifier.forTesting(
               initialQuests: const [],
-              onExpReward: (_) async {},
+              onExpReward: (_, __) async {},
             ),
           ),
           userProvider.overrideWith(() => userNotifier),
@@ -164,6 +165,7 @@ class _FlowUserNotifier extends UserNotifier {
     double height = 170,
     double weight = 70,
     String fitnessLevel = 'Beginner',
+    StatType? preferredFocus,
   }) async {
     final now = DateTime(2026, 7, 19);
     final user = UserModel(
@@ -175,6 +177,7 @@ class _FlowUserNotifier extends UserNotifier {
       age: age,
       height: height,
       weight: weight,
+      preferredFocusIndex: preferredFocus?.index,
     );
     recreatedUser = user;
     state = AsyncData(user);

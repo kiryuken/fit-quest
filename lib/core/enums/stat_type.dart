@@ -1,9 +1,8 @@
 enum StatType {
   strength('STR', 'Strength', 0xFFEF5350),
   agility('AGI', 'Agility', 0xFF42A5F5),
-  endurance('END', 'Endurance', 0xFF2AFC98),
-  dexterity('DEX', 'Dexterity', 0xFFFDD835),
-  constitution('CON', 'Constitution', 0xFF2DD4BF),
+  vitality('VIT', 'Vitality', 0xFF2AFC98),
+  senses('SEN', 'Senses', 0xFFFDD835),
   intelligence('INT', 'Intelligence', 0xFF673AB7);
 
   final String shortName;

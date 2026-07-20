@@ -1,72 +1,96 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../data/datasources/hive_datasource.dart';
 import '../data/models/achievement_state.dart';
 import 'initialization_provider.dart';
 
 final achievementProvider =
     StateNotifierProvider<AchievementNotifier, List<AchievementState>>((ref) {
-  final ds = ref.watch(hiveDatasourceProvider);
-  return AchievementNotifier(ds);
+  return AchievementNotifier(
+    ref.watch(hiveDatasourceProvider),
+    now: ref.read(clockProvider).now,
+  );
 });
 
 class AchievementNotifier extends StateNotifier<List<AchievementState>> {
-  final HiveDatasource? _ds;
+  final HiveDatasource? _datasource;
+  final DateTime Function() _now;
 
-  AchievementNotifier(this._ds) : super([]) {
+  AchievementNotifier(
+    this._datasource, {
+    required DateTime Function() now,
+  })  : _now = now,
+        super([]) {
     _load();
   }
 
-  @visibleForTesting
   AchievementNotifier.forTesting({
     required List<AchievementState> initialAchievements,
-  })  : _ds = null,
+    DateTime Function()? now,
+  })  : _datasource = null,
+        _now = now ?? DateTime.now,
         super(initialAchievements);
 
   void _load() {
-    final ds = _ds;
-    if (ds == null) return;
-
-    final raw = ds.gameStateBox.get('achievements');
-    if (raw != null) {
-      final list = jsonDecode(raw as String) as List;
-      state = list
-          .map((e) => AchievementState.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } else {
-      state = AchievementCatalog.defaults();
-      _save();
-    }
-  }
-
-  void _save() {
-    final ds = _ds;
-    if (ds == null) return;
-
-    try {
-      final json = jsonEncode(state.map((a) => a.toJson()).toList());
-      ds.gameStateBox.put('achievements', json);
-    } catch (e) {
-      debugPrint('[AchievementNotifier] Failed to save achievements: $e');
-    }
-  }
-
-  void unlock(String id) {
-    final idx = state.indexWhere((a) => a.id == id);
-    if (idx >= 0 && !state[idx].unlocked) {
-      final prev = state;
-      state = [...state]..[idx] = state[idx].copyUnlocked();
+    final datasource = _datasource;
+    if (datasource == null) return;
+    final raw = datasource.gameStateBox.get('achievements_v2');
+    if (raw is String) {
       try {
-        _save();
-      } catch (e) {
-        debugPrint(
-            '[AchievementNotifier] Failed to save unlock, reverting: $e');
-        state = prev;
+        final decoded = jsonDecode(raw) as List;
+        state = decoded
+            .map(
+              (entry) => AchievementState.fromJson(
+                Map<String, dynamic>.from(entry as Map),
+              ),
+            )
+            .toList();
+        return;
+      } on FormatException {
+        // Fall through to a clean catalog if local JSON is malformed.
       }
     }
+    state = AchievementCatalog.defaults();
   }
 
-  bool isUnlocked(String id) => state.any((a) => a.id == id && a.unlocked);
-  int get unlockedCount => state.where((a) => a.unlocked).length;
+  Future<Set<String>> unlockAll(Iterable<String> ids) async {
+    final requested = ids.toSet();
+    final unlockedNow = <String>{};
+    final previous = state;
+    final updated = state.map((achievement) {
+      if (!requested.contains(achievement.id) || achievement.unlocked) {
+        return achievement;
+      }
+      unlockedNow.add(achievement.id);
+      return achievement.copyUnlocked(at: _now());
+    }).toList();
+    if (unlockedNow.isEmpty) return const {};
+
+    state = updated;
+    try {
+      await _save();
+      return unlockedNow;
+    } catch (_) {
+      state = previous;
+      rethrow;
+    }
+  }
+
+  Future<bool> unlock(String id) async => (await unlockAll([id])).contains(id);
+
+  Future<void> _save() async {
+    final datasource = _datasource;
+    if (datasource == null) return;
+    final encoded =
+        jsonEncode(state.map((achievement) => achievement.toJson()).toList());
+    await datasource.gameStateBox.put('achievements_v2', encoded);
+  }
+
+  bool isUnlocked(String id) =>
+      state.any((achievement) => achievement.id == id && achievement.unlocked);
+
+  int get unlockedCount =>
+      state.where((achievement) => achievement.unlocked).length;
 }

@@ -27,9 +27,8 @@ class StatGrowthConfig {
   static const parametersByStat = <StatType, StatGrowthParameters>{
     StatType.strength: defaultParameters,
     StatType.agility: defaultParameters,
-    StatType.endurance: defaultParameters,
-    StatType.dexterity: defaultParameters,
-    StatType.constitution: defaultParameters,
+    StatType.vitality: defaultParameters,
+    StatType.senses: defaultParameters,
     StatType.intelligence: defaultParameters,
   };
 

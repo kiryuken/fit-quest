@@ -27,7 +27,7 @@ class CharacterStatScreen extends ConsumerWidget {
         }
 
         final stats = {
-          for (final stat in StatType.values) stat: user.stats[stat.index] ?? 1,
+          for (final stat in StatType.values) stat: user.getStatValue(stat),
         };
         return _StatsContent(
           level: user.level,
@@ -48,7 +48,7 @@ class CharacterStatScreen extends ConsumerWidget {
 class _StatsContent extends StatelessWidget {
   final int level;
   final String name;
-  final Map<StatType, int> stats;
+  final Map<StatType, double> stats;
 
   const _StatsContent({
     required this.level,
@@ -58,7 +58,7 @@ class _StatsContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = stats.values.fold<int>(0, (sum, value) => sum + value);
+    final total = stats.values.fold<double>(0, (sum, value) => sum + value);
     final strongest = stats.entries.reduce(
       (current, next) => next.value > current.value ? next : current,
     );
@@ -76,7 +76,7 @@ class _StatsContent extends StatelessWidget {
                 subtitle: 'A live readout of your physical progression.',
                 trailing: GlassPill(
                   icon: Icons.auto_graph_rounded,
-                  label: '$total PTS',
+                  label: '${total.toStringAsFixed(1)} PTS',
                   color: AppColors.turquoise,
                 ),
               ),
@@ -110,8 +110,8 @@ class _StatsContent extends StatelessWidget {
                           ),
                         ),
                         GlassPill(
-                          label:
-                              '${strongest.key.shortName} ${strongest.value}',
+                          label: '${strongest.key.shortName} '
+                              '${strongest.value.toStringAsFixed(1)}',
                           color: AppColors.forStat(strongest.key.name),
                         ),
                       ],
@@ -150,7 +150,8 @@ class _StatsContent extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Match your workout to the signal you want to strengthen.',
+                      'Base attributes follow character level; movement-specific '
+                      'practice builds mastery without inflating raw stats.',
                       style: AppTextStyles.body,
                     ),
                     const SizedBox(height: AppSpacing.lg),
@@ -168,21 +169,21 @@ class _StatsContent extends StatelessWidget {
                     ),
                     const _GrowthRow(
                       icon: Icons.favorite_rounded,
-                      label: 'END',
-                      exercise: 'Running · Cycling · Plank',
-                      color: AppColors.enduranceColor,
+                      label: 'VIT',
+                      exercise: 'Recovery · work capacity · HP',
+                      color: AppColors.vitalityColor,
                     ),
                     const _GrowthRow(
                       icon: Icons.gps_fixed_rounded,
-                      label: 'DEX',
-                      exercise: 'Yoga · Jump Rope · Pull Up',
-                      color: AppColors.dexterityColor,
+                      label: 'SEN',
+                      exercise: 'Awareness · precision · technique',
+                      color: AppColors.sensesColor,
                     ),
                     const _GrowthRow(
                       icon: Icons.shield_rounded,
-                      label: 'CON',
-                      exercise: 'Plank · Squat · Deadlift',
-                      color: AppColors.constitutionColor,
+                      label: 'INT',
+                      exercise: 'Strategy · analysis · learning',
+                      color: AppColors.intelligenceColor,
                       isLast: true,
                     ),
                   ],
@@ -198,7 +199,7 @@ class _StatsContent extends StatelessWidget {
 
 class _StatDetailCard extends StatelessWidget {
   final StatType stat;
-  final int value;
+  final double value;
 
   const _StatDetailCard({required this.stat, required this.value});
 
@@ -220,7 +221,7 @@ class _StatDetailCard extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                '$value',
+                value.toStringAsFixed(1),
                 style: AppTextStyles.statValue.copyWith(
                   color: color,
                   fontSize: 24,
@@ -232,7 +233,7 @@ class _StatDetailCard extends StatelessWidget {
           Text(stat.displayName, style: AppTextStyles.cardTitle),
           const SizedBox(height: AppSpacing.sm),
           LiquidProgressBar(
-            value: value / 100,
+            value: value / 50,
             height: 5,
             color: color,
             endColor: color,
@@ -245,9 +246,8 @@ class _StatDetailCard extends StatelessWidget {
   IconData _iconFor(StatType stat) => switch (stat) {
         StatType.strength => Icons.fitness_center_rounded,
         StatType.agility => Icons.bolt_rounded,
-        StatType.endurance => Icons.favorite_rounded,
-        StatType.dexterity => Icons.gps_fixed_rounded,
-        StatType.constitution => Icons.shield_rounded,
+        StatType.vitality => Icons.favorite_rounded,
+        StatType.senses => Icons.gps_fixed_rounded,
         StatType.intelligence => Icons.psychology_rounded,
       };
 }
@@ -295,7 +295,7 @@ class _GrowthRow extends StatelessWidget {
 }
 
 class _StatRadarPainter extends CustomPainter {
-  final Map<StatType, int> stats;
+  final Map<StatType, double> stats;
 
   const _StatRadarPainter({required this.stats});
 
@@ -303,7 +303,7 @@ class _StatRadarPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 2 - 34;
-    const count = 6;
+    const count = 5;
 
     for (var ring = 1; ring <= 4; ring++) {
       final path = _polygonPath(center, radius * ring / 4, count);
@@ -356,7 +356,7 @@ class _StatRadarPainter extends CustomPainter {
     final dataPath = Path();
     for (var index = 0; index < count; index++) {
       final stat = StatType.values[index];
-      final value = ((stats[stat] ?? 1) / 100).clamp(0.12, 1.0);
+      final value = ((stats[stat] ?? 10) / 50).clamp(0.12, 1.0);
       final angle = (2 * math.pi * index / count) - math.pi / 2;
       final point = Offset(
         center.dx + radius * value * math.cos(angle),

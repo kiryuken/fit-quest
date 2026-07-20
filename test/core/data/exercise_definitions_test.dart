@@ -1,4 +1,5 @@
 import 'package:fitquest_rpg/core/data/exercise_definitions.dart';
+import 'package:fitquest_rpg/core/enums/exercise_tracking_metric.dart';
 import 'package:fitquest_rpg/core/enums/exercise_type.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,7 +13,13 @@ void main() {
       {
         'Push Up': ExerciseType.pushUp,
         'Pull Up': ExerciseType.pullUp,
+        'Shoulder Raise': ExerciseType.shoulderRaise,
+        'Hanging Core': ExerciseType.hangingCore,
+        'Bicep Curl': ExerciseType.bicepCurl,
+        'Squat': ExerciseType.squat,
+        'Calf Raise': ExerciseType.calfRaise,
         'Running': ExerciseType.running,
+        'Cycling': ExerciseType.cycling,
         'Jump Rope': ExerciseType.jumpRope,
         'Boxing': ExerciseType.boxing,
       },

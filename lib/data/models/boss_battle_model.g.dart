@@ -35,20 +35,35 @@ class BossBattleModelAdapter extends TypeAdapter<BossBattleModel> {
   @override
   void write(BinaryWriter writer, BossBattleModel obj) {
     writer.writeByte(15);
-    writer.writeByte(0); writer.write(obj.id);
-    writer.writeByte(1); writer.write(obj.name);
-    writer.writeByte(2); writer.write(obj.description);
-    writer.writeByte(3); writer.write(obj.level);
-    writer.writeByte(4); writer.write(obj.hp);
-    writer.writeByte(5); writer.write(obj.currentDamageDone);
-    writer.writeByte(6); writer.write(obj.statThresholds);
-    writer.writeByte(7); writer.write(obj.xpReward);
-    writer.writeByte(8); writer.write(obj.statRewards);
-    writer.writeByte(9); writer.write(obj.skillRewardId);
-    writer.writeByte(10); writer.write(obj.iconAsset);
-    writer.writeByte(11); writer.write(obj.requiredWorkouts);
-    writer.writeByte(12); writer.write(obj.isDefeated);
-    writer.writeByte(13); writer.write(obj.tierIndex);
-    writer.writeByte(14); writer.write(obj.difficulty);
+    writer.writeByte(0);
+    writer.write(obj.id);
+    writer.writeByte(1);
+    writer.write(obj.name);
+    writer.writeByte(2);
+    writer.write(obj.description);
+    writer.writeByte(3);
+    writer.write(obj.level);
+    writer.writeByte(4);
+    writer.write(obj.hp);
+    writer.writeByte(5);
+    writer.write(obj.currentDamageDone);
+    writer.writeByte(6);
+    writer.write(obj.statThresholds);
+    writer.writeByte(7);
+    writer.write(obj.xpReward);
+    writer.writeByte(8);
+    writer.write(obj.statRewards);
+    writer.writeByte(9);
+    writer.write(obj.skillRewardId);
+    writer.writeByte(10);
+    writer.write(obj.iconAsset);
+    writer.writeByte(11);
+    writer.write(obj.requiredWorkouts);
+    writer.writeByte(12);
+    writer.write(obj.isDefeated);
+    writer.writeByte(13);
+    writer.write(obj.tierIndex);
+    writer.writeByte(14);
+    writer.write(obj.difficulty);
   }
 }

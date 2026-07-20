@@ -1,10 +1,10 @@
-import 'package:fitquest_rpg/core/enums/stat_type.dart';
 import 'package:fitquest_rpg/core/theme/colors.dart';
 import 'package:fitquest_rpg/core/theme/glass_container.dart';
 import 'package:fitquest_rpg/core/theme/spacing.dart';
 import 'package:fitquest_rpg/core/theme/text_styles.dart';
 import 'package:fitquest_rpg/data/models/boss_battle_model.dart';
 import 'package:fitquest_rpg/providers/initialization_provider.dart';
+import 'package:fitquest_rpg/providers/user_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,8 +26,8 @@ class BossVictoryScreen extends ConsumerWidget {
         }
         final boss = snapshot.data;
         final name = boss?.name ?? 'Boss';
-        final xp = boss?.xpReward ?? 0;
-        final statRewards = boss?.statRewards ?? <int, int>{};
+        final user = ref.watch(userProvider).valueOrNull;
+        final xp = user?.processedEventXp['boss:$id'] ?? 0;
 
         return AuroraScaffold(
           body: SafeArea(
@@ -137,20 +137,13 @@ class BossVictoryScreen extends ConsumerWidget {
                             ),
                           ],
                         ),
-                        for (final reward in statRewards.entries) ...[
-                          const Padding(
-                            padding: EdgeInsets.symmetric(
-                              vertical: AppSpacing.md,
-                            ),
-                            child: Divider(),
-                          ),
-                          _StatReward(
-                            stat: reward.key < StatType.values.length
-                                ? StatType.values[reward.key]
-                                : StatType.strength,
-                            value: reward.value,
-                          ),
-                        ],
+                        const SizedBox(height: AppSpacing.md),
+                        Text(
+                          'Boss rewards never add raw stat points. Base stats '
+                          'remain derived from character level.',
+                          style: AppTextStyles.caption,
+                          textAlign: TextAlign.center,
+                        ),
                       ],
                     ),
                   ),
@@ -171,34 +164,6 @@ class BossVictoryScreen extends ConsumerWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _StatReward extends StatelessWidget {
-  final StatType stat;
-  final int value;
-
-  const _StatReward({required this.stat, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = AppColors.forStat(stat.name);
-    return Row(
-      children: [
-        GlassIconBadge(
-          icon: Icons.auto_graph_rounded,
-          color: color,
-        ),
-        const SizedBox(width: AppSpacing.md),
-        Expanded(
-          child: Text(stat.displayName, style: AppTextStyles.cardTitle),
-        ),
-        Text(
-          '+$value',
-          style: AppTextStyles.heading2.copyWith(color: color),
-        ),
-      ],
     );
   }
 }

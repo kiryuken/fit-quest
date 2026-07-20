@@ -1,11 +1,11 @@
 {
-    "name": "fitquest_rpg",
-    "short_name": "fitquest_rpg",
+    "name": "FitQuest RPG",
+    "short_name": "FitQuest",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#05010F",
+    "theme_color": "#6366F1",
+    "description": "An offline-first RPG fitness tracker.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

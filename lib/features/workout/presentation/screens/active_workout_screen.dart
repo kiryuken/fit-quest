@@ -1,26 +1,31 @@
 import 'dart:async';
 
-import 'package:fitquest_rpg/core/data/exercise_definitions.dart';
+import 'package:fitquest_rpg/core/enums/exercise_tracking_metric.dart';
 import 'package:fitquest_rpg/core/routing/route_names.dart';
 import 'package:fitquest_rpg/core/theme/colors.dart';
 import 'package:fitquest_rpg/core/theme/glass_container.dart';
 import 'package:fitquest_rpg/core/theme/spacing.dart';
 import 'package:fitquest_rpg/core/theme/text_styles.dart';
-import 'package:fitquest_rpg/data/models/achievement_state.dart';
 import 'package:fitquest_rpg/data/models/workout_model.dart';
-import 'package:fitquest_rpg/providers/achievement_provider.dart';
+import 'package:fitquest_rpg/data/models/workout_plan_model.dart';
+import 'package:fitquest_rpg/domain/services/workout_completion_service.dart';
+import 'package:fitquest_rpg/domain/services/workout_reward_service.dart';
 import 'package:fitquest_rpg/providers/initialization_provider.dart';
-import 'package:fitquest_rpg/providers/quest_provider.dart';
-import 'package:fitquest_rpg/providers/user_provider.dart';
+import 'package:fitquest_rpg/providers/weekly_plan_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 class ActiveWorkoutScreen extends ConsumerStatefulWidget {
+  /// Kept for route/backward compatibility. A session now always uses the
+  /// complete scheduled day instead of granting rewards per exercise.
   final String exerciseName;
 
-  const ActiveWorkoutScreen({super.key, required this.exerciseName});
+  const ActiveWorkoutScreen({
+    super.key,
+    this.exerciseName = 'Today',
+  });
 
   @override
   ConsumerState<ActiveWorkoutScreen> createState() =>
@@ -28,42 +33,77 @@ class ActiveWorkoutScreen extends ConsumerStatefulWidget {
 }
 
 class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
-  int _elapsedSeconds = 0;
-  int _trackedAmount = 0;
-  int _sets = 1;
+  final Uuid _uuid = const Uuid();
+  final List<_ExerciseDraft> _drafts = [];
   Timer? _timer;
+  String? _initializedDayId;
+  int _elapsedSeconds = 0;
   bool _isRunning = false;
   bool _isFinishing = false;
-  late final ExerciseDefinition _exercise;
 
-  @override
-  void initState() {
-    super.initState();
-    _exercise = ExerciseDefinition.all.firstWhere(
-      (exercise) => exercise.name == widget.exerciseName,
-      orElse: () => ExerciseDefinition.all.first,
-    );
+  void _initialize(PlannedDayModel day) {
+    if (_initializedDayId == day.id) return;
+    _initializedDayId = day.id;
+    _drafts
+      ..clear()
+      ..addAll(
+        day.exercises.map(
+          (exercise) => _ExerciseDraft(
+            plan: exercise,
+            variations: exercise.variations
+                .map(
+                  (variation) => _VariationDraft(
+                    plan: variation,
+                    sets: List.generate(
+                      variation.targetSets,
+                      (_) => _SetDraft(
+                        id: _uuid.v4(),
+                        value: variation.targetValue,
+                        loadKg: variation.targetLoadKg,
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      );
   }
 
   void _toggleTimer() {
     if (_isRunning) {
       _timer?.cancel();
       setState(() => _isRunning = false);
-    } else {
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() => _elapsedSeconds++);
-      });
-      setState(() => _isRunning = true);
+      return;
     }
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _elapsedSeconds++);
+    });
+    setState(() => _isRunning = true);
   }
 
-  void _adjustTrackedAmount(int amount) {
-    setState(
-      () => _trackedAmount = (_trackedAmount + amount).clamp(0, 99999),
-    );
-  }
+  int get _plannedSets => _drafts.fold(
+        0,
+        (total, exercise) => total + exercise.plannedSetCount,
+      );
 
-  void _addSet() => setState(() => _sets++);
+  int get _validSets => _drafts.fold(
+        0,
+        (total, exercise) => total + exercise.validSetCount,
+      );
+
+  int get _validFamilies =>
+      _drafts.where((exercise) => exercise.validSetCount > 0).length;
+
+  double get _completionRate =>
+      _plannedSets == 0 ? 0 : _validSets / _plannedSets;
+
+  int get _estimatedXp => WorkoutRewardService.calculateSessionXp(
+        exerciseFamilies: _validFamilies,
+        validSets: _validSets,
+        plannedSets: _plannedSets,
+        completionRate: _completionRate,
+      );
 
   String get _timeDisplay {
     final minutes = _elapsedSeconds ~/ 60;
@@ -72,87 +112,155 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         '${seconds.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _finishWorkout() async {
-    if (_isFinishing) return;
-    setState(() => _isFinishing = true);
-    _timer?.cancel();
+  void _toggleSet(
+    _ExerciseDraft exercise,
+    _SetDraft set,
+    bool completed,
+  ) {
+    setState(() => set.completed = completed);
+  }
 
-    final userNotifier = ref.read(userProvider.notifier);
-    final achievementNotifier = ref.read(achievementProvider.notifier);
-    final questNotifier = ref.read(questProvider.notifier);
-    final workoutRepo = ref.read(workoutRepositoryProvider);
-    final totalSets = _sets;
-    final trackedAmount = _trackedAmount;
-    final duration = _elapsedSeconds;
-    const formQuality = 0.8;
-    final totalXp = _exercise.expReward * totalSets;
-    final questProgress = _exercise.questProgressFor(
-      trackedAmount,
-      sets: totalSets,
-    );
+  void _adjustValue(
+    ExerciseTrackingMetric metric,
+    _SetDraft set,
+    int direction,
+  ) {
+    final next = set.value + (metric.inputStep * direction);
+    setState(() => set.value = next.clamp(0, 100000));
+  }
 
-    final workout = WorkoutModel(
-      id: const Uuid().v4(),
-      date: DateTime.now(),
-      durationSeconds: duration,
-      exercises: [
-        ExerciseRecord(
-          id: const Uuid().v4(),
-          exerciseTypeIndex: _exercise.type.index,
-          sets: totalSets,
-          reps: _exercise.repetitionsFor(trackedAmount),
-          durationSeconds: duration,
-          formQuality: formQuality,
-          xpEarned: totalXp,
-          distanceMeters: _exercise.distanceMetersFor(trackedAmount),
-        ),
-      ],
-      totalXpEarned: totalXp,
-      statXpGained: _exercise.statGains.map(
-        (stat, value) => MapEntry(stat.index, value * totalSets),
-      ),
-      completed: true,
-      createdAt: DateTime.now(),
-    );
+  void _adjustRpe(_SetDraft set, int direction) {
+    setState(() => set.rpe = (set.rpe + direction).clamp(1, 10));
+  }
 
-    try {
-      await workoutRepo.saveWorkout(workout);
-      await userNotifier.completeWorkout(
-        xpGained: totalXp,
-        statGains: _exercise.statGains.map(
-          (stat, value) => MapEntry(stat, value * totalSets),
-        ),
-      );
-
-      achievementNotifier.unlock(AchievementCatalog.firstWorkout);
-
-      final quests = ref.read(questProvider);
-      for (final quest in quests) {
-        if (quest.id.startsWith(_exercise.questSlug)) {
-          await questNotifier.addProgress(
-            quest.id,
-            questProgress,
-          );
-          break;
+  void _markAll(bool completed) {
+    setState(() {
+      for (final exercise in _drafts) {
+        for (final variation in exercise.variations) {
+          for (final set in variation.sets) {
+            set.completed = completed;
+          }
         }
       }
+    });
+  }
 
-      if (mounted) {
-        context.pushNamed(
-          RouteNames.workoutComplete,
-          queryParameters: {
-            'xp': '$totalXp',
-            'duration': '$duration',
-            'sets': '$totalSets',
-            'reps': '$questProgress',
-            'trackingLabel': _exercise.trackingMetric.displayLabel,
-            'trackingUnit': _exercise.trackingMetric.shortLabel,
-            'exercise': _exercise.name,
-          },
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isFinishing = false);
+  WorkoutModel _buildWorkout(
+    WorkoutPlanModel plan,
+    PlannedDayModel day,
+  ) {
+    final now = ref.read(clockProvider).now();
+    final workoutId = _uuid.v4();
+    final exercises = <ExerciseRecord>[];
+
+    for (var exerciseIndex = 0;
+        exerciseIndex < _drafts.length;
+        exerciseIndex++) {
+      final draft = _drafts[exerciseIndex];
+      final metric = draft.plan.trackingMetric;
+      final variations = draft.variations
+          .map(
+            (variation) => VariationRecord(
+              id: variation.plan.id,
+              name: variation.plan.name,
+              difficultyMultiplier: variation.plan.difficultyMultiplier,
+              sets: variation.sets
+                  .map(
+                    (set) => WorkoutSetRecord(
+                      id: set.id,
+                      reps: metric == ExerciseTrackingMetric.repetitions
+                          ? set.value
+                          : 0,
+                      durationSeconds:
+                          metric == ExerciseTrackingMetric.durationSeconds
+                              ? set.value
+                              : metric == ExerciseTrackingMetric.distanceMeters
+                                  ? _elapsedSeconds
+                                  : 0,
+                      distanceMeters:
+                          metric == ExerciseTrackingMetric.distanceMeters
+                              ? set.value.toDouble()
+                              : 0,
+                      loadKg: set.loadKg,
+                      rpe: set.rpe,
+                      completed: set.completed,
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          )
+          .toList(growable: false);
+      exercises.add(
+        ExerciseRecord(
+          id: _uuid.v4(),
+          exerciseTypeIndex: draft.plan.exerciseTypeIndex,
+          movementId: draft.plan.movementId,
+          displayName: draft.plan.name,
+          trackingMetricIndex: metric.index,
+          variations: variations,
+          orderIndex: exerciseIndex,
+          sets: draft.plannedSetCount,
+        ),
+      );
+    }
+
+    return WorkoutModel(
+      id: workoutId,
+      eventId: 'workout:$workoutId',
+      date: now,
+      durationSeconds: _elapsedSeconds,
+      exercises: exercises,
+      createdAt: now,
+      planId: plan.id,
+      plannedDayId: day.id,
+      processingStateIndex: WorkoutProcessingState.pending.index,
+      completionRate: _completionRate,
+      scheduled: !day.isOptional,
+      countsForStreak: day.countsForStreak,
+    );
+  }
+
+  Future<void> _finish(
+    WorkoutPlanModel plan,
+    PlannedDayModel day,
+  ) async {
+    if (_isFinishing) return;
+    if (_completionRate < WorkoutRewardService.minimumCompletionRate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Complete at least 50% of the planned sets before finishing.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isFinishing = true);
+    _timer?.cancel();
+    try {
+      final result = await ref
+          .read(workoutCompletionServiceProvider)
+          .complete(_buildWorkout(plan, day));
+      if (!mounted) return;
+      context.pushReplacementNamed(
+        RouteNames.workoutComplete,
+        queryParameters: {
+          'xp': '${result.xpAwarded}',
+          'duration': '${result.workout.durationSeconds}',
+          'sets': '${result.workout.validSetCount}',
+          'reps': '${result.workout.plannedSetCount}',
+          'trackingLabel': 'Completion',
+          'trackingUnit': 'SETS',
+          'exercise': day.label,
+        },
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Workout was not committed: $error')),
+      );
+      setState(() => _isFinishing = false);
     }
   }
 
@@ -164,271 +272,384 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final statColor = AppColors.forStat(_exercise.statGains.keys.first.name);
+    final planAsync = ref.watch(weeklyPlanProvider);
+    return planAsync.when(
+      loading: () => const AuroraScaffold(
+        title: 'Active workout',
+        body: Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, _) => AuroraScaffold(
+        title: 'Active workout',
+        body: EmptyGlassState(
+          icon: Icons.error_outline_rounded,
+          title: 'Plan unavailable',
+          message: '$error',
+        ),
+      ),
+      data: (plan) {
+        final day = plan.dayFor(ref.read(clockProvider).now());
+        _initialize(day);
+        if (day.isRest) {
+          return const AuroraScaffold(
+            title: 'Recovery day',
+            body: EmptyGlassState(
+              icon: Icons.bedtime_rounded,
+              title: 'Rest preserves progress',
+              message:
+                  'Recovery is part of the plan. No workout is scheduled today.',
+            ),
+          );
+        }
+        return _buildSession(context, plan, day);
+      },
+    );
+  }
+
+  Widget _buildSession(
+    BuildContext context,
+    WorkoutPlanModel plan,
+    PlannedDayModel day,
+  ) {
+    final completionPercent = (_completionRate * 100).round();
     return AuroraScaffold(
-      title: _exercise.name,
+      title: day.label,
       leading: IconButton(
         icon: const Icon(Icons.close_rounded),
         tooltip: 'Close workout',
-        onPressed: () => context.pop(),
+        onPressed: _isFinishing ? null : () => context.pop(),
       ),
-      body: SafeArea(
-        top: false,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-              physics: const BouncingScrollPhysics(),
-              child: ConstrainedBox(
-                constraints:
-                    BoxConstraints(minHeight: constraints.maxHeight - 32),
-                child: IntrinsicHeight(
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          GlassPill(
-                            icon: _isRunning
-                                ? Icons.graphic_eq_rounded
-                                : Icons.pause_rounded,
-                            label: _isRunning ? 'SESSION LIVE' : 'READY',
-                            color: _isRunning
-                                ? AppColors.turquoise
-                                : AppColors.textDimmed,
-                          ),
-                          const Spacer(),
-                          GlassPill(
-                            icon: Icons.bolt_rounded,
-                            label: '+${_exercise.expReward * _sets} XP',
-                            color: AppColors.gold,
-                          ),
-                        ],
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        physics: const BouncingScrollPhysics(),
+        children: [
+          Row(
+            children: [
+              GlassPill(
+                icon:
+                    _isRunning ? Icons.graphic_eq_rounded : Icons.pause_rounded,
+                label: _isRunning ? 'SESSION LIVE' : _timeDisplay,
+                color: _isRunning ? AppColors.turquoise : AppColors.textDimmed,
+              ),
+              const Spacer(),
+              GlassPill(
+                icon: Icons.bolt_rounded,
+                label: 'EST. +$_estimatedXp XP',
+                color: AppColors.gold,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          GlassContainer(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Text(_timeDisplay, style: AppTextStyles.heading2),
+                    const Spacer(),
+                    IconButton.filledTonal(
+                      tooltip: _isRunning ? 'Pause timer' : 'Start timer',
+                      onPressed: _toggleTimer,
+                      icon: Icon(
+                        _isRunning
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
                       ),
-                      const Spacer(),
-                      GlassContainer(
-                        width: double.infinity,
-                        padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
-                        child: Column(
-                          children: [
-                            Text('SESSION TIME',
-                                style: AppTextStyles.sectionTitle),
-                            const SizedBox(height: AppSpacing.md),
-                            Text(
-                              _timeDisplay,
-                              style: AppTextStyles.timerDisplay,
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                            Text(
-                              _isRunning
-                                  ? 'Stay in rhythm. You are building momentum.'
-                                  : 'Tap play when you are ready to move.',
-                              style: AppTextStyles.caption,
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: AppSpacing.xl),
-                            Container(
-                              height: 1,
-                              decoration: const BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.transparent,
-                                    AppColors.glassBorder,
-                                    Colors.transparent,
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: AppSpacing.xl),
-                            Text(
-                                _exercise.trackingMetric.displayLabel
-                                    .toUpperCase(),
-                                style: AppTextStyles.sectionTitle),
-                            const SizedBox(height: AppSpacing.md),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _ControlButton(
-                                  icon: Icons.remove_rounded,
-                                  color: statColor,
-                                  onTap: () => _adjustTrackedAmount(
-                                    -_exercise.trackingMetric.inputStep,
-                                  ),
-                                ),
-                                const SizedBox(width: AppSpacing.xl),
-                                SizedBox(
-                                  width: 108,
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        '$_trackedAmount',
-                                        style: AppTextStyles.repCounter,
-                                      ),
-                                      Text(
-                                        _exercise.trackingMetric.shortLabel,
-                                        style: AppTextStyles.pillLabel,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: AppSpacing.xl),
-                                _ControlButton(
-                                  icon: Icons.add_rounded,
-                                  color: statColor,
-                                  onTap: () => _adjustTrackedAmount(
-                                    _exercise.trackingMetric.inputStep,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.xl),
-                            PremiumCard(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.lg,
-                                vertical: AppSpacing.md,
-                              ),
-                              child: Row(
-                                children: [
-                                  GlassIconBadge(
-                                    icon: Icons.layers_rounded,
-                                    color: statColor,
-                                    size: 42,
-                                    iconSize: 19,
-                                  ),
-                                  const SizedBox(width: AppSpacing.md),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          '$_sets set${_sets == 1 ? '' : 's'}',
-                                          style: AppTextStyles.cardTitle,
-                                        ),
-                                        Text(
-                                          'Each set multiplies your reward',
-                                          style: AppTextStyles.caption,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  _ControlButton(
-                                    icon: Icons.add_rounded,
-                                    color: AppColors.turquoise,
-                                    size: 42,
-                                    onTap: _addSet,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.xl),
-                      Semantics(
-                        button: true,
-                        label: _isRunning ? 'Pause timer' : 'Start timer',
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(44),
-                          onTap: _toggleTimer,
-                          child: AnimatedContainer(
-                            duration: AppSpacing.standard,
-                            width: 86,
-                            height: 86,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: _isRunning
-                                  ? const LinearGradient(
-                                      colors: [
-                                        AppColors.danger,
-                                        AppColors.pink,
-                                      ],
-                                    )
-                                  : AppColors.coolGradient,
-                              border:
-                                  Border.all(color: AppColors.glassHighlight),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: (_isRunning
-                                          ? AppColors.danger
-                                          : AppColors.accent)
-                                      .withValues(alpha: 0.45),
-                                  blurRadius: 30,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                            child: Icon(
-                              _isRunning
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                              color: AppColors.textPrimary,
-                              size: 38,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      const SizedBox(height: AppSpacing.xl),
-                      SizedBox(
-                        width: double.infinity,
-                        child: GradientActionButton(
-                          label: 'FINISH SESSION',
-                          icon: Icons.flag_rounded,
-                          loading: _isFinishing,
-                          gradient: AppColors.rewardGradient,
-                          foregroundColor: AppColors.textInverse,
-                          onPressed: _isFinishing ? null : _finishWorkout,
-                        ),
-                      ),
-                    ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                LiquidProgressBar(
+                  value: _completionRate,
+                  height: 9,
+                  color: completionPercent >= 50
+                      ? AppColors.turquoise
+                      : AppColors.accent,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: [
+                    Text(
+                      '$_validSets / $_plannedSets valid sets',
+                      style: AppTextStyles.caption,
+                    ),
+                    const Spacer(),
+                    Text('$completionPercent%', style: AppTextStyles.cardTitle),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    key: const Key('mark-all-sets'),
+                    onPressed: () => _markAll(_validSets < _plannedSets),
+                    icon: const Icon(Icons.done_all_rounded),
+                    label: Text(
+                      _validSets < _plannedSets ? 'Mark all' : 'Clear all',
+                    ),
                   ),
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          for (final exercise in _drafts)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+              child: _ExerciseEditor(
+                draft: exercise,
+                onToggle: (set, completed) =>
+                    _toggleSet(exercise, set, completed),
+                onAdjustValue: _adjustValue,
+                onAdjustRpe: _adjustRpe,
               ),
-            );
-          },
-        ),
+            ),
+          const SizedBox(height: AppSpacing.sm),
+          GradientActionButton(
+            key: const Key('finish-workout'),
+            label: completionPercent >= 50
+                ? 'FINISH · +$_estimatedXp XP'
+                : 'COMPLETE 50% TO FINISH',
+            icon: Icons.flag_rounded,
+            loading: _isFinishing,
+            onPressed: _isFinishing ? null : () => _finish(plan, day),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ControlButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  final Color color;
-  final double size;
+class _ExerciseEditor extends StatelessWidget {
+  final _ExerciseDraft draft;
+  final void Function(_SetDraft set, bool completed) onToggle;
+  final void Function(
+    ExerciseTrackingMetric metric,
+    _SetDraft set,
+    int direction,
+  ) onAdjustValue;
+  final void Function(_SetDraft set, int direction) onAdjustRpe;
 
-  const _ControlButton({
-    required this.icon,
-    required this.onTap,
-    required this.color,
-    this.size = 50,
+  const _ExerciseEditor({
+    required this.draft,
+    required this.onToggle,
+    required this.onAdjustValue,
+    required this.onAdjustRpe,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(size / 2),
-        onTap: onTap,
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.13),
-            shape: BoxShape.circle,
-            border: Border.all(color: color.withValues(alpha: 0.38)),
-            boxShadow: [
-              BoxShadow(
-                color: color.withValues(alpha: 0.14),
-                blurRadius: 14,
+    final color = _exerciseColor(draft.plan.exerciseTypeIndex);
+    return PremiumCard(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              GlassIconBadge(
+                icon: Icons.fitness_center_rounded,
+                color: color,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(draft.plan.name, style: AppTextStyles.heading3),
+                    Text(
+                      '${draft.validSetCount}/${draft.plannedSetCount} valid sets'
+                      '${draft.plan.isOptional ? ' · optional' : ''}',
+                      style: AppTextStyles.caption,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          child: Icon(icon, color: color, size: size * 0.44),
-        ),
+          const SizedBox(height: AppSpacing.lg),
+          for (final variation in draft.variations) ...[
+            Text(variation.plan.name, style: AppTextStyles.cardTitle),
+            const SizedBox(height: AppSpacing.sm),
+            for (var index = 0; index < variation.sets.length; index++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: _SetEditor(
+                  key: Key('${draft.plan.id}-${variation.plan.id}-$index'),
+                  index: index,
+                  metric: draft.plan.trackingMetric,
+                  set: variation.sets[index],
+                  onToggle: onToggle,
+                  onAdjustValue: onAdjustValue,
+                  onAdjustRpe: onAdjustRpe,
+                ),
+              ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
+        ],
       ),
     );
   }
 }
+
+class _SetEditor extends StatelessWidget {
+  final int index;
+  final ExerciseTrackingMetric metric;
+  final _SetDraft set;
+  final void Function(_SetDraft set, bool completed) onToggle;
+  final void Function(
+    ExerciseTrackingMetric metric,
+    _SetDraft set,
+    int direction,
+  ) onAdjustValue;
+  final void Function(_SetDraft set, int direction) onAdjustRpe;
+
+  const _SetEditor({
+    super.key,
+    required this.index,
+    required this.metric,
+    required this.set,
+    required this.onToggle,
+    required this.onAdjustValue,
+    required this.onAdjustRpe,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: set.completed
+            ? AppColors.turquoise.withValues(alpha: 0.08)
+            : AppColors.glassBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: set.completed
+              ? AppColors.turquoise.withValues(alpha: 0.4)
+              : AppColors.divider,
+        ),
+      ),
+      child: Row(
+        children: [
+          Checkbox(
+            value: set.completed,
+            onChanged: (value) => onToggle(set, value ?? false),
+          ),
+          Text('${index + 1}', style: AppTextStyles.cardMeta),
+          const SizedBox(width: AppSpacing.sm),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Decrease ${metric.displayLabel}',
+            onPressed: () => onAdjustValue(metric, set, -1),
+            icon: const Icon(Icons.remove_rounded, size: 18),
+          ),
+          Expanded(
+            child: Text(
+              '${set.value} ${metric.shortLabel.toLowerCase()}',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.cardTitle,
+            ),
+          ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Increase ${metric.displayLabel}',
+            onPressed: () => onAdjustValue(metric, set, 1),
+            icon: const Icon(Icons.add_rounded, size: 18),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          InkWell(
+            onTap: () => onAdjustRpe(set, 1),
+            onLongPress: () => onAdjustRpe(set, -1),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              child: Text(
+                'RPE ${set.rpe}',
+                style: AppTextStyles.pillLabel.copyWith(
+                  color: AppColors.gold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExerciseDraft {
+  final PlannedExerciseModel plan;
+  final List<_VariationDraft> variations;
+
+  const _ExerciseDraft({
+    required this.plan,
+    required this.variations,
+  });
+
+  int get plannedSetCount => variations.fold(
+        0,
+        (total, variation) => total + variation.sets.length,
+      );
+
+  int get validSetCount => variations.fold(
+        0,
+        (total, variation) =>
+            total +
+            variation.sets
+                .where(
+                  (set) =>
+                      set.completed &&
+                      plan.trackingMetric.isValid(
+                        reps: plan.trackingMetric ==
+                                ExerciseTrackingMetric.repetitions
+                            ? set.value
+                            : 0,
+                        durationSeconds: plan.trackingMetric ==
+                                ExerciseTrackingMetric.durationSeconds
+                            ? set.value
+                            : 0,
+                        distanceMeters: plan.trackingMetric ==
+                                ExerciseTrackingMetric.distanceMeters
+                            ? set.value.toDouble()
+                            : 0,
+                      ),
+                )
+                .length,
+      );
+}
+
+class _VariationDraft {
+  final VariationPlanModel plan;
+  final List<_SetDraft> sets;
+
+  const _VariationDraft({
+    required this.plan,
+    required this.sets,
+  });
+}
+
+class _SetDraft {
+  final String id;
+  int value;
+  double loadKg;
+  int rpe;
+  bool completed;
+
+  _SetDraft({
+    required this.id,
+    required this.value,
+    required this.loadKg,
+  })  : rpe = 7,
+        completed = false;
+}
+
+Color _exerciseColor(int index) => const [
+      AppColors.accent,
+      AppColors.turquoise,
+      AppColors.pink,
+      AppColors.gold,
+      AppColors.info,
+    ][index % 5];

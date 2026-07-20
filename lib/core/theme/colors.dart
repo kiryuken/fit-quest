@@ -38,9 +38,8 @@ class AppColors {
   // Attribute spectrum.
   static const Color strengthColor = danger;
   static const Color agilityColor = info;
-  static const Color enduranceColor = success;
-  static const Color dexterityColor = gold;
-  static const Color constitutionColor = turquoise;
+  static const Color vitalityColor = success;
+  static const Color sensesColor = gold;
   static const Color intelligenceColor = violet;
 
   // Glass layers.
@@ -85,9 +84,8 @@ class AppColors {
     return switch (statName) {
       'strength' => strengthColor,
       'agility' => agilityColor,
-      'endurance' => enduranceColor,
-      'dexterity' => dexterityColor,
-      'constitution' => constitutionColor,
+      'vitality' => vitalityColor,
+      'senses' => sensesColor,
       'intelligence' => intelligenceColor,
       _ => textDimmed,
     };

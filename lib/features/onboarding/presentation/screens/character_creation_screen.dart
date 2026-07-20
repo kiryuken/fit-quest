@@ -1,4 +1,3 @@
-import 'package:fitquest_rpg/core/constants/stat_constants.dart';
 import 'package:fitquest_rpg/core/enums/stat_type.dart';
 import 'package:fitquest_rpg/core/theme/colors.dart';
 import 'package:fitquest_rpg/core/theme/glass_container.dart';
@@ -25,13 +24,7 @@ class _CharacterCreationScreenState
   final _weightController = TextEditingController(text: '70');
   String _fitnessLevel = 'Beginner';
   StatType? _selectedFocus;
-  int _bonusPoints = 5;
   bool _saving = false;
-
-  final Map<StatType, int> _stats = StatConstants.defaultStats();
-  final Map<StatType, int> _bonuses = {
-    for (final stat in StatType.values) stat: 0,
-  };
 
   @override
   void dispose() {
@@ -40,22 +33,6 @@ class _CharacterCreationScreenState
     _heightController.dispose();
     _weightController.dispose();
     super.dispose();
-  }
-
-  void _addBonus(StatType stat) {
-    if (_bonusPoints <= 0) return;
-    setState(() {
-      _bonuses[stat] = (_bonuses[stat] ?? 0) + 1;
-      _bonusPoints--;
-    });
-  }
-
-  void _removeBonus(StatType stat) {
-    if ((_bonuses[stat] ?? 0) <= 0) return;
-    setState(() {
-      _bonuses[stat] = (_bonuses[stat] ?? 0) - 1;
-      _bonusPoints++;
-    });
   }
 
   Future<void> _completeCreation() async {
@@ -74,9 +51,15 @@ class _CharacterCreationScreenState
             height: height,
             weight: weight,
             fitnessLevel: _fitnessLevel,
+            preferredFocus: _selectedFocus,
           );
       if (!mounted) return;
       context.go('/home/dashboard');
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Character could not be created: $error')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -276,39 +259,27 @@ class _CharacterCreationScreenState
                     ],
                   ),
                   const SizedBox(height: AppSpacing.xl),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: SectionHeader(title: 'Bonus allocation'),
-                      ),
-                      GlassPill(
-                        icon: Icons.add_rounded,
-                        label: '$_bonusPoints LEFT',
-                        color: _bonusPoints > 0
-                            ? AppColors.gold
-                            : AppColors.turquoise,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    'Preview how you want your starting build to feel.',
-                    style: AppTextStyles.caption,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  for (final stat in StatType.values)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                      child: _StatAllocationCard(
-                        stat: stat,
-                        value: (_stats[stat] ?? 1) + (_bonuses[stat] ?? 0),
-                        hasBonus: (_bonuses[stat] ?? 0) > 0,
-                        canRemove: (_bonuses[stat] ?? 0) > 0,
-                        canAdd: _bonusPoints > 0,
-                        onRemove: () => _removeBonus(stat),
-                        onAdd: () => _addBonus(stat),
-                      ),
+                  PremiumCard(
+                    backgroundColor: AppColors.accent.withValues(alpha: 0.08),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const GlassIconBadge(
+                          icon: Icons.auto_graph_rounded,
+                          color: AppColors.turquoise,
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Text(
+                            'All five base stats begin at 10.0 and grow only '
+                            'with character level, approaching a physiological '
+                            'ceiling of 50 with diminishing returns.',
+                            style: AppTextStyles.caption,
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
                   const SizedBox(height: AppSpacing.xl),
                   GradientActionButton(
                     label: 'BEGIN THE ADVENTURE',
@@ -335,9 +306,8 @@ class _CharacterCreationScreenState
   IconData _statIcon(StatType stat) => switch (stat) {
         StatType.strength => Icons.fitness_center_rounded,
         StatType.agility => Icons.bolt_rounded,
-        StatType.endurance => Icons.favorite_rounded,
-        StatType.dexterity => Icons.gps_fixed_rounded,
-        StatType.constitution => Icons.shield_rounded,
+        StatType.vitality => Icons.favorite_rounded,
+        StatType.senses => Icons.gps_fixed_rounded,
         StatType.intelligence => Icons.psychology_rounded,
       };
 }
@@ -366,131 +336,6 @@ class _MetricField extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md,
           vertical: AppSpacing.lg,
-        ),
-      ),
-    );
-  }
-}
-
-class _StatAllocationCard extends StatelessWidget {
-  final StatType stat;
-  final int value;
-  final bool hasBonus;
-  final bool canRemove;
-  final bool canAdd;
-  final VoidCallback onRemove;
-  final VoidCallback onAdd;
-
-  const _StatAllocationCard({
-    required this.stat,
-    required this.value,
-    required this.hasBonus,
-    required this.canRemove,
-    required this.canAdd,
-    required this.onRemove,
-    required this.onAdd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = AppColors.forStat(stat.name);
-    return PremiumCard(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      backgroundColor: hasBonus ? color.withValues(alpha: 0.07) : null,
-      child: Row(
-        children: [
-          GlassIconBadge(
-            icon: _iconFor(stat),
-            color: color,
-            size: 44,
-            iconSize: 20,
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(stat.displayName, style: AppTextStyles.cardTitle),
-                const SizedBox(height: AppSpacing.xs),
-                Text(_description(stat), style: AppTextStyles.caption),
-              ],
-            ),
-          ),
-          _PointButton(
-            icon: Icons.remove_rounded,
-            color: AppColors.textDimmed,
-            enabled: canRemove,
-            onTap: onRemove,
-          ),
-          SizedBox(
-            width: 44,
-            child: Text(
-              '$value',
-              style: AppTextStyles.statValue.copyWith(
-                color: hasBonus ? color : AppColors.textPrimary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          _PointButton(
-            icon: Icons.add_rounded,
-            color: color,
-            enabled: canAdd,
-            onTap: onAdd,
-          ),
-        ],
-      ),
-    );
-  }
-
-  IconData _iconFor(StatType stat) => switch (stat) {
-        StatType.strength => Icons.fitness_center_rounded,
-        StatType.agility => Icons.bolt_rounded,
-        StatType.endurance => Icons.favorite_rounded,
-        StatType.dexterity => Icons.gps_fixed_rounded,
-        StatType.constitution => Icons.shield_rounded,
-        StatType.intelligence => Icons.psychology_rounded,
-      };
-
-  String _description(StatType stat) => switch (stat) {
-        StatType.strength => 'Power and physical damage',
-        StatType.agility => 'Speed and movement',
-        StatType.endurance => 'Stamina and cardio',
-        StatType.dexterity => 'Precision and technique',
-        StatType.constitution => 'Durability and HP',
-        StatType.intelligence => 'Strategy and analysis',
-      };
-}
-
-class _PointButton extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  const _PointButton({
-    required this.icon,
-    required this.color,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Opacity(
-      opacity: enabled ? 1 : 0.3,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: enabled ? onTap : null,
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.11),
-            shape: BoxShape.circle,
-            border: Border.all(color: color.withValues(alpha: 0.3)),
-          ),
-          child: Icon(icon, color: color, size: 18),
         ),
       ),
     );

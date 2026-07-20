@@ -147,8 +147,11 @@ class WorkoutCompleteScreen extends ConsumerWidget {
                           child: MetricTile(
                             icon: Icons.repeat_rounded,
                             label: trackingLabel,
-                            value:
-                                trackingUnit == 'METERS' ? '$reps m' : '$reps',
+                            value: trackingUnit == 'METERS'
+                                ? '$reps m'
+                                : trackingUnit == 'SETS'
+                                    ? '$sets/$reps'
+                                    : '$reps',
                             color: AppColors.pink,
                           ),
                         ),

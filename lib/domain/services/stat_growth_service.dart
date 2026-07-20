@@ -25,6 +25,22 @@ class StatGrowthService {
     return baseStatAtLevel(stat, level + 1) - baseStatAtLevel(stat, level);
   }
 
+  /// Exact values for every canonical stat at [level].
+  static Map<StatType, double> statsAtLevel(int level) {
+    _validateLevel(level);
+    return {
+      for (final stat in StatType.values) stat: baseStatAtLevel(stat, level),
+    };
+  }
+
+  /// Hive-friendly representation keyed by canonical enum index.
+  static Map<int, double> indexedStatsAtLevel(int level) {
+    return {
+      for (final entry in statsAtLevel(level).entries)
+        entry.key.index: entry.value,
+    };
+  }
+
   /// Exact cumulative gain across one or more level transitions.
   ///
   /// Summing [gainForNextLevel] keeps that per-level delta as the only source
@@ -41,30 +57,6 @@ class StatGrowthService {
       gain += gainForNextLevel(stat, level);
     }
     return gain;
-  }
-
-  /// Whole stat points to persist in the current integer-based Hive model.
-  ///
-  /// The cumulative curve is rounded at both endpoints. Individual fractional
-  /// deltas are deliberately not rounded, otherwise late-level gains would be
-  /// lost and the stored progression would plateau too early.
-  static int wholePointGainBetweenLevels(
-    StatType stat, {
-    required int fromLevel,
-    required int toLevel,
-  }) {
-    _validateLevelRange(fromLevel, toLevel);
-    final growthAtStart = gainBetweenLevels(
-      stat,
-      fromLevel: 1,
-      toLevel: fromLevel,
-    ).round();
-    final growthAtEnd = gainBetweenLevels(
-      stat,
-      fromLevel: 1,
-      toLevel: toLevel,
-    ).round();
-    return growthAtEnd - growthAtStart;
   }
 
   static void _validateLevel(int level) {

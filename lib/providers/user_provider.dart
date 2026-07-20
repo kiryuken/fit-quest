@@ -1,13 +1,11 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../data/models/user_model.dart';
+
 import '../core/enums/stat_type.dart';
 import '../core/utils/level_requirements.dart';
+import '../data/models/user_model.dart';
 import '../domain/services/user_progression_service.dart';
 import 'initialization_provider.dart';
 
-/// Current user state — null means no character created yet.
-/// Use `?? UserModel.empty()` for safe defaults in UI.
 final userProvider = AsyncNotifierProvider<UserNotifier, UserModel?>(
   UserNotifier.new,
 );
@@ -15,84 +13,63 @@ final userProvider = AsyncNotifierProvider<UserNotifier, UserModel?>(
 class UserNotifier extends AsyncNotifier<UserModel?> {
   @override
   Future<UserModel?> build() async {
-    final repo = ref.read(userRepositoryProvider);
-    final ds = ref.read(hiveDatasourceProvider);
-    await ds.checkAndMigrate();
-    final user = await repo.getUser();
-    return user; // null = no character yet, navigate to onboarding
+    return ref.read(userRepositoryProvider).getUser();
   }
 
   Future<UserModel> createCharacter({
     required String name,
     int age = 18,
-    double height = 170.0,
-    double weight = 70.0,
+    double height = 170,
+    double weight = 70,
     String fitnessLevel = 'Beginner',
+    StatType? preferredFocus,
   }) async {
-    final repo = ref.read(userRepositoryProvider);
-    final user = await repo.createDefaultUser(
-      name: name,
-      age: age,
-      height: height,
-      weight: weight,
+    final sanitizedName = name.trim().isEmpty
+        ? 'Warrior'
+        : name.trim().substring(
+              0,
+              name.trim().length.clamp(0, 40),
+            );
+    final user = await ref.read(userRepositoryProvider).createDefaultUser(
+          name: sanitizedName,
+          age: age.clamp(10, 120),
+          height: height.clamp(100, 250),
+          weight: weight.clamp(30, 300),
+          fitnessLevel: fitnessLevel,
+          preferredFocus: preferredFocus,
+        );
+    state = AsyncData(user);
+    return user;
+  }
+
+  Future<ProgressionResult> awardQuestXp({
+    required int amount,
+    required String questId,
+  }) async {
+    final current = state.valueOrNull;
+    if (current == null) {
+      throw StateError('Create a character before earning quest XP.');
+    }
+    final result = UserProgressionService.awardXp(
+      current,
+      amount,
+      source: XpAwardSource.quest,
+      now: ref.read(clockProvider).now(),
+      eventId: 'quest:$questId',
     );
-
-    // Apply fitness level to initial stats
-    final factor = fitnessLevel == 'Advanced'
-        ? 5
-        : (fitnessLevel == 'Intermediate' ? 3 : 1);
-    final boostedStats = <int, int>{};
-    for (final stat in StatType.values) {
-      boostedStats[stat.index] = factor;
-    }
-
-    final updated = user.copyWith(stats: boostedStats);
-    try {
-      await repo.saveUser(updated);
-      state = AsyncData(updated);
-    } catch (e) {
-      debugPrint('[UserNotifier] Failed to save character: $e');
-      state = AsyncData(updated); // Still show boosted stats in UI
-    }
-    return updated;
+    await _persist(result.user);
+    return result;
   }
 
   Future<void> gainXp(int amount) async {
     final current = state.valueOrNull;
     if (current == null) return;
-
     final updated = UserProgressionService.gainXp(
       current,
       amount,
-      now: DateTime.now(),
+      now: ref.read(clockProvider).now(),
     );
-
-    final repo = ref.read(userRepositoryProvider);
-    try {
-      await repo.saveUser(updated);
-      state = AsyncData(updated);
-    } catch (e) {
-      debugPrint('[UserNotifier] Failed to save user: $e');
-    }
-  }
-
-  Future<void> gainStatXp(Map<StatType, int> statXp) async {
-    final current = state.valueOrNull;
-    if (current == null) return;
-
-    final updated = UserProgressionService.gainStatXp(
-      current,
-      statXp,
-      now: DateTime.now(),
-    );
-
-    final repo = ref.read(userRepositoryProvider);
-    try {
-      await repo.saveUser(updated);
-      state = AsyncData(updated);
-    } catch (e) {
-      debugPrint('[UserNotifier] Failed to save user: $e');
-    }
+    await _persist(updated);
   }
 
   Future<bool> unlockSkill(String skillId) async {
@@ -100,110 +77,101 @@ class UserNotifier extends AsyncNotifier<UserModel?> {
     if (current == null) return false;
     if (current.hasSkill(skillId)) return true;
 
-    final newSkills = [...current.unlockedSkills, skillId];
-    final newLevels = Map<String, int>.from(current.skillLevels);
-    newLevels[skillId] = 1;
-
     final updated = current.copyWith(
-      unlockedSkills: newSkills,
-      skillLevels: newLevels,
-      updatedAt: DateTime.now(),
+      unlockedSkills: [...current.unlockedSkills, skillId],
+      skillLevels: {...current.skillLevels, skillId: 1},
+      updatedAt: ref.read(clockProvider).now(),
     );
-
-    final repo = ref.read(userRepositoryProvider);
-    try {
-      await repo.saveUser(updated);
-      state = AsyncData(updated);
-    } catch (e) {
-      debugPrint('[UserNotifier] Failed to save user: $e');
-    }
+    await _persist(updated);
     return true;
   }
 
   Future<bool> levelUpSkill(String skillId) async {
     final current = state.valueOrNull;
-    if (current == null) return false;
-    if (!current.hasSkill(skillId)) return false;
-
-    final currentLevel = current.skillLevel(skillId);
-    final newLevels = Map<String, int>.from(current.skillLevels);
-    newLevels[skillId] = currentLevel + 1;
+    if (current == null || !current.hasSkill(skillId)) return false;
 
     final updated = current.copyWith(
-      skillLevels: newLevels,
-      updatedAt: DateTime.now(),
+      skillLevels: {
+        ...current.skillLevels,
+        skillId: current.skillLevel(skillId) + 1,
+      },
+      updatedAt: ref.read(clockProvider).now(),
     );
-
-    final repo = ref.read(userRepositoryProvider);
-    try {
-      await repo.saveUser(updated);
-      state = AsyncData(updated);
-    } catch (e) {
-      debugPrint('[UserNotifier] Failed to save user: $e');
-    }
+    await _persist(updated);
     return true;
   }
 
-  Future<void> completeWorkout({
-    required int xpGained,
-    required Map<StatType, int> statGains,
+  Future<ProgressionResult> completeWorkout({
+    required String eventId,
+    required int requestedXp,
+    required Map<String, int> masteryPoints,
+    required Iterable<String> personalRecordMovementIds,
+    required bool countsForStreak,
+    required int missedScheduledDays,
   }) async {
     final current = state.valueOrNull;
-    if (current == null) return;
-
-    final updated = UserProgressionService.completeWorkout(
-      current,
-      xpGained: xpGained,
-      statGains: statGains,
-      now: DateTime.now(),
-    );
-
-    final repo = ref.read(userRepositoryProvider);
-    try {
-      await repo.saveUser(updated);
-      state = AsyncData(updated);
-    } catch (e) {
-      debugPrint('[UserNotifier] Failed to save user: $e');
+    if (current == null) {
+      throw StateError('Create a character before completing a workout.');
     }
+    final result = UserProgressionService.completeWorkout(
+      current,
+      eventId: eventId,
+      requestedXp: requestedXp,
+      masteryPoints: masteryPoints,
+      personalRecordMovementIds: personalRecordMovementIds,
+      now: ref.read(clockProvider).now(),
+      countsForStreak: countsForStreak,
+      missedScheduledDays: missedScheduledDays,
+    );
+    await _persist(result.user);
+    return result;
   }
 
-  Future<void> completeBossVictory({
+  Future<ProgressionResult> completeBossVictory({
+    required String bossId,
     required int xpReward,
-    required Map<StatType, int> statRewards,
   }) async {
     final current = state.valueOrNull;
-    if (current == null) return;
-
-    final updated = UserProgressionService.completeBossVictory(
-      current,
-      xpReward: xpReward,
-      statRewards: statRewards,
-      now: DateTime.now(),
-    );
-
-    final repo = ref.read(userRepositoryProvider);
-    try {
-      await repo.saveUser(updated);
-      state = AsyncData(updated);
-    } catch (e) {
-      debugPrint('[UserNotifier] Failed to save boss victory: $e');
+    if (current == null) {
+      throw StateError('Create a character before fighting a boss.');
     }
+    final result = UserProgressionService.completeBossVictory(
+      current,
+      bossId: bossId,
+      requestedXp: xpReward,
+      now: ref.read(clockProvider).now(),
+    );
+    await _persist(result.user);
+    return result;
+  }
+
+  Future<void> unlockTitles(Iterable<String> titles) async {
+    final current = state.valueOrNull;
+    if (current == null || titles.isEmpty) return;
+    final updated = UserProgressionService.unlockTitles(
+      current,
+      titles,
+      now: ref.read(clockProvider).now(),
+    );
+    await _persist(updated);
+  }
+
+  Future<void> _persist(UserModel user) async {
+    await ref.read(userRepositoryProvider).saveUser(user);
+    state = AsyncData(user);
   }
 }
 
-// Derived providers for convenient access
 final userLevelProvider = Provider<int>((ref) {
   return ref.watch(userProvider).valueOrNull?.level ?? 1;
 });
 
-final userStatsProvider = Provider<Map<StatType, int>>((ref) {
+final userStatsProvider = Provider<Map<StatType, double>>((ref) {
   final user = ref.watch(userProvider).valueOrNull;
   if (user == null) return {};
-  final result = <StatType, int>{};
-  for (final stat in StatType.values) {
-    result[stat] = user.stats[stat.index] ?? 1;
-  }
-  return result;
+  return {
+    for (final stat in StatType.values) stat: user.getStatValue(stat),
+  };
 });
 
 final userStreakProvider = Provider<int>((ref) {
@@ -216,6 +184,6 @@ final userShieldsProvider = Provider<int>((ref) {
 
 final levelProgressProvider = Provider<double>((ref) {
   final user = ref.watch(userProvider).valueOrNull;
-  if (user == null) return 0.0;
+  if (user == null) return 0;
   return LevelRequirements.levelProgress(user.level, user.currentXp);
 });

@@ -6,7 +6,7 @@ class DamageService {
   static int calculateDamage({
     required double baseDamage,
     required double damageMultiplier,
-    required Map<StatType, int> playerStats,
+    required Map<StatType, double> playerStats,
     required double formQuality,
     int comboCount = 0,
     bool isStatCheckPassed = false,
@@ -20,8 +20,8 @@ class DamageService {
     // 2. Stat scaling
     final strBonus = (playerStats[StatType.strength] ?? 0) * 0.02;
     final agiBonus = (playerStats[StatType.agility] ?? 0) * 0.015;
-    final dexBonus = (playerStats[StatType.dexterity] ?? 0) * 0.01;
-    final totalStatMultiplier = 1.0 + strBonus + agiBonus + dexBonus;
+    final sensesBonus = (playerStats[StatType.senses] ?? 0) * 0.01;
+    final totalStatMultiplier = 1.0 + strBonus + agiBonus + sensesBonus;
     damage *= totalStatMultiplier;
 
     // 3. Level multiplier from skill
@@ -40,7 +40,7 @@ class DamageService {
       damage *= 1.5;
     }
 
-    // 7. Critical hit (10% base chance, +1% per DEX)
+    // 7. Critical hit (10% base chance, +1% per SEN)
     if (isCritical) {
       damage *= 2.5;
     }
@@ -59,8 +59,8 @@ class DamageService {
   }
 
   /// Random critical hit check
-  static bool rollCriticalHit(int dexterity) {
-    final critChance = 0.10 + (dexterity * 0.01); // 10% + 1% per DEX
+  static bool rollCriticalHit(int senses) {
+    final critChance = 0.10 + (senses * 0.01); // 10% + 1% per SEN
     return Random().nextDouble() < critChance.clamp(0.05, 0.50);
   }
 

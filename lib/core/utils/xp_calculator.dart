@@ -47,7 +47,9 @@ class XpCalculator {
 
   /// Calculate all stat XP from a list of exercises
   static Map<StatType, int> calculateStatXpDistribution({
-    required List<({ExerciseType type, int reps, double weight, double formQuality})> exercises,
+    required List<
+            ({ExerciseType type, int reps, double weight, double formQuality})>
+        exercises,
   }) {
     final statXp = <StatType, int>{};
     for (final stat in StatType.values) {

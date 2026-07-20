@@ -30,16 +30,26 @@ class SkillModelAdapter extends TypeAdapter<SkillModel> {
   @override
   void write(BinaryWriter writer, SkillModel obj) {
     writer.writeByte(10);
-    writer.writeByte(0); writer.write(obj.id);
-    writer.writeByte(1); writer.write(obj.name);
-    writer.writeByte(2); writer.write(obj.description);
-    writer.writeByte(3); writer.write(obj.martialArtIndex);
-    writer.writeByte(4); writer.write(obj.categoryIndex);
-    writer.writeByte(5); writer.write(obj.maxLevel);
-    writer.writeByte(6); writer.write(obj.prerequisites);
-    writer.writeByte(7); writer.write(obj.levels);
-    writer.writeByte(8); writer.write(obj.iconAsset);
-    writer.writeByte(9); writer.write(obj.requiredEquipment);
+    writer.writeByte(0);
+    writer.write(obj.id);
+    writer.writeByte(1);
+    writer.write(obj.name);
+    writer.writeByte(2);
+    writer.write(obj.description);
+    writer.writeByte(3);
+    writer.write(obj.martialArtIndex);
+    writer.writeByte(4);
+    writer.write(obj.categoryIndex);
+    writer.writeByte(5);
+    writer.write(obj.maxLevel);
+    writer.writeByte(6);
+    writer.write(obj.prerequisites);
+    writer.writeByte(7);
+    writer.write(obj.levels);
+    writer.writeByte(8);
+    writer.write(obj.iconAsset);
+    writer.writeByte(9);
+    writer.write(obj.requiredEquipment);
   }
 }
 
@@ -59,7 +69,8 @@ class SkillLevelDataAdapter extends TypeAdapter<SkillLevelData> {
       xpRequired: fields[1] as int,
       damageMultiplier: fields[2] as double,
       statRequirements: Map<int, int>.from(fields[3] as Map? ?? {}),
-      exerciseRequirements: (fields[4] as List?)?.cast<ExerciseRequirement>() ?? [],
+      exerciseRequirements:
+          (fields[4] as List?)?.cast<ExerciseRequirement>() ?? [],
       unlockEffect: fields[5] as String?,
       baseDamage: fields[6] as int? ?? 10,
     );
@@ -68,13 +79,20 @@ class SkillLevelDataAdapter extends TypeAdapter<SkillLevelData> {
   @override
   void write(BinaryWriter writer, SkillLevelData obj) {
     writer.writeByte(7);
-    writer.writeByte(0); writer.write(obj.level);
-    writer.writeByte(1); writer.write(obj.xpRequired);
-    writer.writeByte(2); writer.write(obj.damageMultiplier);
-    writer.writeByte(3); writer.write(obj.statRequirements);
-    writer.writeByte(4); writer.write(obj.exerciseRequirements);
-    writer.writeByte(5); writer.write(obj.unlockEffect);
-    writer.writeByte(6); writer.write(obj.baseDamage);
+    writer.writeByte(0);
+    writer.write(obj.level);
+    writer.writeByte(1);
+    writer.write(obj.xpRequired);
+    writer.writeByte(2);
+    writer.write(obj.damageMultiplier);
+    writer.writeByte(3);
+    writer.write(obj.statRequirements);
+    writer.writeByte(4);
+    writer.write(obj.exerciseRequirements);
+    writer.writeByte(5);
+    writer.write(obj.unlockEffect);
+    writer.writeByte(6);
+    writer.write(obj.baseDamage);
   }
 }
 
@@ -101,10 +119,15 @@ class ExerciseRequirementAdapter extends TypeAdapter<ExerciseRequirement> {
   @override
   void write(BinaryWriter writer, ExerciseRequirement obj) {
     writer.writeByte(5);
-    writer.writeByte(0); writer.write(obj.exerciseTypeIndex);
-    writer.writeByte(1); writer.write(obj.minimumSets);
-    writer.writeByte(2); writer.write(obj.minimumReps);
-    writer.writeByte(3); writer.write(obj.totalRequired);
-    writer.writeByte(4); writer.write(obj.minimumFormQuality);
+    writer.writeByte(0);
+    writer.write(obj.exerciseTypeIndex);
+    writer.writeByte(1);
+    writer.write(obj.minimumSets);
+    writer.writeByte(2);
+    writer.write(obj.minimumReps);
+    writer.writeByte(3);
+    writer.write(obj.totalRequired);
+    writer.writeByte(4);
+    writer.write(obj.minimumFormQuality);
   }
 }
